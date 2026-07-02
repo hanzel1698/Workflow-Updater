@@ -3,55 +3,90 @@ package com.example.workflowupdater.pdf
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.core.content.FileProvider
 import java.io.File
 
 /**
- * Renders the HTML report in a hidden [WebView], writes it to a fixed A3 landscape PDF, then opens
- * it in the device's default PDF viewer.
+ * Renders the HTML report in a temporary off-screen [WebView], writes it to a fixed A3 landscape
+ * PDF, then opens it in the device's default PDF viewer.
  */
 class PdfExporter(private val context: Context) {
 
-  private var webView: WebView? = null
   private var exportInProgress = false
-
-  fun attach(view: WebView) {
-    webView = view
-  }
-
-  fun detach() {
-    webView?.destroy()
-    webView = null
-  }
 
   /** Loads [html], writes a PDF named from [jobName], and opens it when ready. */
   fun exportReport(html: String, jobName: String, onComplete: () -> Unit, onError: (String) -> Unit) {
-    val view = webView
-    if (view == null) {
-      onError("PDF renderer not ready")
-      return
-    }
     if (exportInProgress) return
 
+    val activity = context.findActivity()
+    if (activity == null) {
+      onError("PDF export requires an active screen")
+      return
+    }
+
     exportInProgress = true
-    view.webViewClient =
+
+    val pageWidthPx = PdfPageSpec.a3LandscapeWidthPx()
+    val pageHeightPx = PdfPageSpec.a3LandscapeHeightPx()
+
+    val container =
+      FrameLayout(activity).apply {
+        layoutParams =
+          FrameLayout.LayoutParams(pageWidthPx, pageHeightPx).apply {
+            leftMargin = -pageWidthPx * 2
+            topMargin = 0
+          }
+        alpha = 0.01f
+        importantForAccessibility = FrameLayout.IMPORTANT_FOR_ACCESSIBILITY_NO
+      }
+
+    val webView =
+      WebView(activity).apply {
+        settings.apply {
+          javaScriptEnabled = false
+          useWideViewPort = true
+          loadWithOverviewMode = false
+          defaultTextEncodingName = "utf-8"
+        }
+        setInitialScale(100)
+        setLayerType(WebView.LAYER_TYPE_SOFTWARE, null)
+      }
+
+    container.addView(
+      webView,
+      FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+    )
+
+    val root = activity.window.decorView as ViewGroup
+    root.addView(container)
+
+    fun cleanup() {
+      exportInProgress = false
+      root.removeView(container)
+      webView.destroy()
+    }
+
+    webView.webViewClient =
       object : WebViewClient() {
         override fun onPageFinished(loadedView: WebView, url: String?) {
-          loadedView.post {
+          loadedView.postDelayed({
             try {
               val pdfFile = pdfOutputFile(jobName)
               WebViewPdfWriter.writeA3Landscape(loadedView, pdfFile)
               openPdf(pdfFile)
-              exportInProgress = false
               onComplete()
             } catch (e: Exception) {
-              exportInProgress = false
               onError(e.message ?: "Could not create the PDF")
+            } finally {
+              cleanup()
             }
-          }
+          }, 450)
         }
 
         @Suppress("DEPRECATION")
@@ -61,11 +96,12 @@ class PdfExporter(private val context: Context) {
           description: String?,
           failingUrl: String?,
         ) {
-          exportInProgress = false
+          cleanup()
           onError(description ?: "Could not render the report")
         }
       }
-    view.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+
+    webView.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
   }
 
   private fun pdfOutputFile(jobName: String): File {
@@ -99,4 +135,13 @@ class PdfExporter(private val context: Context) {
     private fun safeFileName(jobName: String): String =
       jobName.replace(Regex("[\\\\/:*?\"<>|]"), "-").trim().ifBlank { "report" }
   }
+}
+
+private fun Context.findActivity(): Activity? {
+  var current: Context? = this
+  while (current is ContextWrapper) {
+    if (current is Activity) return current
+    current = current.baseContext
+  }
+  return null
 }
