@@ -33,6 +33,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Generate release notes for APK
+        working-directory: .
         run: python3 scripts/generate-android-release-notes.py android
 
       - name: Install shared upload keystore
