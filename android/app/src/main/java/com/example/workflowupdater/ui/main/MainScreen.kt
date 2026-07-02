@@ -213,10 +213,10 @@ private fun exportPdf(
 ) {
   viewModel.setExporting(true)
   val html = viewModel.buildReportHtml(engineerName)
-  pdfExporter.exportReport(
+  pdfExporter.printReport(
     html = html,
     jobName = PdfExporter.jobName(state.activeProfile.id, engineerName),
-    onComplete = { viewModel.setExporting(false) },
+    onStarted = { viewModel.setExporting(false) },
     onError = { message ->
       viewModel.setExporting(false)
       Toast.makeText(context, "Could not create PDF: $message", Toast.LENGTH_LONG).show()

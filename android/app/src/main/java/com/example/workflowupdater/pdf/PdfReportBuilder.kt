@@ -47,24 +47,13 @@ object PdfReportBuilder {
       <html>
       <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=${PdfPageSpec.contentWidthPx()}, initial-scale=1.0">
         <title>${escapeHtml(title)}</title>
         <style>
-          html {
-            box-sizing: border-box;
-            overflow-x: hidden;
-          }
-          *, *::before, *::after {
-            box-sizing: inherit;
-          }
           body {
             font-family: 'Segoe UI', Roboto, sans-serif;
             color: #1e293b;
             background: white;
-            margin: 1cm;
-            width: auto;
-            max-width: 100%;
-            overflow-x: hidden;
+            margin: 1.5cm;
             font-size: 10.5pt;
             line-height: 1.35;
           }
@@ -91,7 +80,6 @@ object PdfReportBuilder {
           }
           table {
             width: 100%;
-            max-width: 100%;
             table-layout: fixed;
             border-collapse: collapse;
             page-break-inside: auto;
@@ -108,8 +96,6 @@ object PdfReportBuilder {
             padding: 6px 8px;
             font-size: 9.5pt;
             text-transform: uppercase;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
           }
           td {
             border: 1px solid #000000;
@@ -126,8 +112,6 @@ object PdfReportBuilder {
             text-transform: uppercase;
             letter-spacing: 0.5px;
             page-break-after: avoid !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
           }
           .status-group-row td { border: 1px solid #000000; padding: 8px 10px; }
           .center { text-align: center; }
@@ -139,7 +123,7 @@ object PdfReportBuilder {
             th { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .status-group-row { background-color: #e2e8f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           }
-          @page { size: 420mm 297mm; margin: 1cm; }
+          @page { size: A3 landscape; margin: 1cm; }
         </style>
       </head>
       <body>
@@ -147,11 +131,11 @@ object PdfReportBuilder {
         <p class="total-works-summary">Total number of works: ${works.size}</p>
         <table>
           <colgroup>
-            <col style="width:18.18%" /><col style="width:6.23%" /><col style="width:5.19%" />
-            <col style="width:4.16%" /><col style="width:4.16%" /><col style="width:4.16%" />
-            <col style="width:4.68%" /><col style="width:5.71%" /><col style="width:4.16%" />
-            <col style="width:20.52%" /><col style="width:5.45%" /><col style="width:5.45%" />
-            <col style="width:5.97%" /><col style="width:5.97%" />
+            <col style="width: 350px" /><col style="width: 120px" /><col style="width: 100px" />
+            <col style="width: 80px" /><col style="width: 80px" /><col style="width: 80px" />
+            <col style="width: 90px" /><col style="width: 110px" /><col style="width: 80px" />
+            <col style="width: 395px" /><col style="width: 105px" /><col style="width: 105px" />
+            <col style="width: 115px" /><col style="width: 115px" />
           </colgroup>
           <thead>
             <tr>
