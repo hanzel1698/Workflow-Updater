@@ -1,17 +1,49 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
 }
 
-import java.io.FileInputStream
-import java.util.Properties
+data class UploadSigningConfig(
+    val storeFile: File,
+    val storePassword: String,
+    val keyAlias: String,
+    val keyPassword: String,
+)
 
-val keystorePropertiesFile = rootProject.file("keystore.properties")
-val keystoreProperties = Properties()
-if (keystorePropertiesFile.exists()) {
-  keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+fun resolveUploadSigning(): UploadSigningConfig? {
+    System.getenv("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }?.let { path ->
+        val file = File(path)
+        if (file.isFile && file.length() > 100L) {
+            return UploadSigningConfig(
+                storeFile = file,
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "android",
+                keyAlias = System.getenv("KEY_ALIAS") ?: "androiddebugkey",
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "android",
+            )
+        }
+    }
+    val centralDir = File(System.getProperty("user.home"), ".android/signing")
+    val centralKeystore = File(centralDir, "upload-keystore.jks")
+    if (centralKeystore.isFile && centralKeystore.length() > 100L) {
+        val props = Properties()
+        File(centralDir, "signing.properties").takeIf { it.isFile }?.inputStream()?.use {
+            props.load(it)
+        }
+        return UploadSigningConfig(
+            storeFile = centralKeystore,
+            storePassword = props.getProperty("storePassword", "android"),
+            keyAlias = props.getProperty("keyAlias", "androiddebugkey"),
+            keyPassword = props.getProperty("keyPassword", "android"),
+        )
+    }
+    return null
 }
+
+val uploadSigning = resolveUploadSigning()
 
 android {
     namespace = "com.example.workflowupdater"
@@ -25,12 +57,12 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            if (keystorePropertiesFile.exists()) {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String
+        if (uploadSigning != null) {
+            create("upload") {
+                storeFile = uploadSigning.storeFile
+                storePassword = uploadSigning.storePassword
+                keyAlias = uploadSigning.keyAlias
+                keyPassword = uploadSigning.keyPassword
             }
         }
     }
@@ -39,8 +71,8 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
+            signingConfig = if (uploadSigning != null) {
+                signingConfigs.getByName("upload")
             } else {
                 signingConfigs.getByName("debug")
             }

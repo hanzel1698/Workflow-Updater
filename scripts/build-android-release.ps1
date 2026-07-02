@@ -1,7 +1,5 @@
 $RootPath = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $AndroidPath = Join-Path $RootPath "android"
-$KeystorePath = Join-Path $AndroidPath "workflow-updater-release.keystore"
-$KeystorePropsPath = Join-Path $AndroidPath "keystore.properties"
 
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host "   Workflow Updater - Android Release Build" -ForegroundColor Cyan
@@ -10,33 +8,8 @@ Write-Host "=============================================" -ForegroundColor Cyan
 & (Join-Path $RootPath "scripts\sync-android-assets.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-if (-not (Test-Path $KeystorePath)) {
-    Write-Host "[*] Creating release keystore..." -ForegroundColor Yellow
-    $DName = "CN=Workflow Updater, OU=RDO KKD, O=PWD, L=Kozhikode, ST=Kerala, C=IN"
-    keytool -genkeypair -v `
-        -keystore $KeystorePath `
-        -alias workflowupdater `
-        -keyalg RSA `
-        -keysize 2048 `
-        -validity 10000 `
-        -storepass "WorkflowUpdater2026" `
-        -keypass "WorkflowUpdater2026" `
-        -dname $DName
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[X] Failed to create keystore." -ForegroundColor Red
-        exit $LASTEXITCODE
-    }
-}
-
-if (-not (Test-Path $KeystorePropsPath)) {
-    @"
-storeFile=workflow-updater-release.keystore
-storePassword=WorkflowUpdater2026
-keyAlias=workflowupdater
-keyPassword=WorkflowUpdater2026
-"@ | Set-Content -Path $KeystorePropsPath -Encoding ASCII
-    Write-Host "[*] Created android/keystore.properties" -ForegroundColor Yellow
-}
+& "$env:USERPROFILE\.android\signing\ensure-signing.ps1"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Push-Location $AndroidPath
 try {
