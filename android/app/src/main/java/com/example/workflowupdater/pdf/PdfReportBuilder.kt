@@ -15,8 +15,11 @@ import java.util.Locale
  */
 object PdfReportBuilder {
 
-  fun buildReportHtml(works: List<WorkItem>, profile: EngineerProfile): String {
-    val title = "WORKS HANDLED BY ${profile.name.uppercase(Locale.ROOT)} AT ${SheetConfig.DESIGN_OFFICE} as on ${todayFormatted()}"
+  fun reportTitle(designation: String, engineerName: String, date: String = todayFormatted()): String =
+    "PROGRESS REPORT - ${designation.trim().uppercase(Locale.ROOT)} - ${engineerName.trim()} - AS ON $date."
+
+  fun buildReportHtml(works: List<WorkItem>, profile: EngineerProfile, engineerName: String): String {
+    val title = reportTitle(profile.id, engineerName)
     val grouped = SheetConfig.STATUS_OPTIONS.associateWith { status -> works.filter { it.status == status } }
 
     val bodyRows = buildString {
@@ -44,13 +47,14 @@ object PdfReportBuilder {
       <html>
       <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=${PdfPageSpec.a3LandscapeWidthPx()}, initial-scale=1.0">
         <title>${escapeHtml(title)}</title>
         <style>
           body {
             font-family: 'Segoe UI', Roboto, sans-serif;
             color: #1e293b;
             background: white;
-            margin: 1.5cm;
+            margin: 1cm;
             font-size: 10.5pt;
             line-height: 1.35;
           }
@@ -93,6 +97,8 @@ object PdfReportBuilder {
             padding: 6px 8px;
             font-size: 9.5pt;
             text-transform: uppercase;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
           td {
             border: 1px solid #000000;
@@ -109,6 +115,8 @@ object PdfReportBuilder {
             text-transform: uppercase;
             letter-spacing: 0.5px;
             page-break-after: avoid !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
           .status-group-row td { border: 1px solid #000000; padding: 8px 10px; }
           .center { text-align: center; }
@@ -120,7 +128,7 @@ object PdfReportBuilder {
             th { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .status-group-row { background-color: #e2e8f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           }
-          @page { size: A3 landscape; margin: 1cm; }
+          @page { size: 420mm 297mm; margin: 1cm; }
         </style>
       </head>
       <body>

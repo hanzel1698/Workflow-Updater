@@ -77,9 +77,9 @@ class WorksViewModel(private val repository: WorkflowRepository, private val pro
     _uiState.update { it.copy(isExporting = exporting) }
   }
 
-  fun buildReportHtml(): String {
+  fun buildReportHtml(engineerName: String): String {
     val state = _uiState.value
-    return PdfReportBuilder.buildReportHtml(state.filteredWorks, state.activeProfile)
+    return PdfReportBuilder.buildReportHtml(state.filteredWorks, state.activeProfile, engineerName)
   }
 
   fun findWork(rowNum: Int): com.example.workflowupdater.data.WorkItem? =

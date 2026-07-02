@@ -65,6 +65,7 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
   val profileSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
   var showFilterSheet by remember { mutableStateOf(false) }
   var showProfileSheet by remember { mutableStateOf(false) }
+  var showExportNameDialog by remember { mutableStateOf(false) }
 
   Scaffold(
     modifier = modifier.fillMaxSize(),
@@ -107,7 +108,11 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
       ExtendedFloatingActionButton(
         onClick = {
           if (state.isExporting) return@ExtendedFloatingActionButton
-          exportPdf(context = context, state = state, viewModel = viewModel, pdfExporter = pdfExporter)
+          if (state.filteredWorks.isEmpty()) {
+            Toast.makeText(context, "No works to export", Toast.LENGTH_SHORT).show()
+            return@ExtendedFloatingActionButton
+          }
+          showExportNameDialog = true
         },
         icon = {
           if (state.isExporting) {
@@ -177,6 +182,23 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
       onDismiss = { showProfileSheet = false },
     )
   }
+
+  if (showExportNameDialog) {
+    ExportPdfNameDialog(
+      designation = state.activeProfile.id,
+      onDismiss = { showExportNameDialog = false },
+      onConfirm = { engineerName ->
+        showExportNameDialog = false
+        exportPdf(
+          context = context,
+          state = state,
+          viewModel = viewModel,
+          pdfExporter = pdfExporter,
+          engineerName = engineerName,
+        )
+      },
+    )
+  }
 }
 
 private fun countActiveDropdownFilters(filters: WorkFilters): Int =
@@ -187,17 +209,14 @@ private fun exportPdf(
   state: WorksUiState,
   viewModel: WorksViewModel,
   pdfExporter: PdfExporter,
+  engineerName: String,
 ) {
-  if (state.filteredWorks.isEmpty()) {
-    Toast.makeText(context, "No works to export", Toast.LENGTH_SHORT).show()
-    return
-  }
   viewModel.setExporting(true)
-  val html = viewModel.buildReportHtml()
-  pdfExporter.printReport(
+  val html = viewModel.buildReportHtml(engineerName)
+  pdfExporter.exportReport(
     html = html,
-    jobName = PdfExporter.jobName(state.activeProfile.id),
-    onStarted = { viewModel.setExporting(false) },
+    jobName = PdfExporter.jobName(state.activeProfile.id, engineerName),
+    onComplete = { viewModel.setExporting(false) },
     onError = { message ->
       viewModel.setExporting(false)
       Toast.makeText(context, "Could not create PDF: $message", Toast.LENGTH_LONG).show()

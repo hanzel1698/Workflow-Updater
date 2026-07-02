@@ -571,6 +571,36 @@
     </div>
   </div>
 
+  <!-- EXPORT PDF — ENGINEER NAME MODAL -->
+  <div class="modal-overlay" id="export-pdf-modal">
+    <div class="modal-window" style="max-width: 420px;">
+      <div class="modal-header">
+        <h3>Export PDF Report</h3>
+        <button class="close-btn" id="close-export-pdf-modal-btn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <form id="export-pdf-form">
+        <div class="modal-body">
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0 0 1rem 0;">
+            Enter your name for the report title and file name.
+          </p>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="export-engineer-name">Engineer's Name</label>
+            <input type="text" id="export-engineer-name" placeholder="e.g. Hanzel H. Fernandez" required autocomplete="name">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancel-export-pdf-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Download PDF
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ACTIVITY LOG DRAWER -->
   <div class="drawer-overlay" id="drawer-overlay">
     <div class="drawer-panel" id="drawer-panel">

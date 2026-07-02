@@ -588,13 +588,40 @@ function setupEventListeners() {
 
   exportPdfOpt.addEventListener('click', () => {
     exportDropdownMenu.classList.remove('show');
-    downloadPdfReport();
+    openExportPdfModal();
   });
 
   exportExcelOpt.addEventListener('click', () => {
     exportDropdownMenu.classList.remove('show');
     downloadExcelReport();
   });
+
+  // Export PDF engineer name modal
+  const exportPdfModal = document.getElementById('export-pdf-modal');
+  const exportPdfForm = document.getElementById('export-pdf-form');
+  const exportEngineerNameInput = document.getElementById('export-engineer-name');
+  const closeExportPdfModalBtn = document.getElementById('close-export-pdf-modal-btn');
+  const cancelExportPdfBtn = document.getElementById('cancel-export-pdf-btn');
+
+  if (closeExportPdfModalBtn) {
+    closeExportPdfModalBtn.addEventListener('click', () => closeModal(exportPdfModal));
+  }
+  if (cancelExportPdfBtn) {
+    cancelExportPdfBtn.addEventListener('click', () => closeModal(exportPdfModal));
+  }
+  if (exportPdfForm) {
+    exportPdfForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const engineerName = exportEngineerNameInput.value.trim();
+      if (!engineerName) {
+        showToast('Please enter your name to export the PDF report.', 'error');
+        exportEngineerNameInput.focus();
+        return;
+      }
+      closeModal(exportPdfModal);
+      downloadPdfReport(engineerName);
+    });
+  }
 
   // Logs Side Drawer Toggles
   dom.openLogsBtn.addEventListener('click', () => {
@@ -932,6 +959,11 @@ function getCurrentDateFormatted() {
   return `${dd}-${mm}-${yyyy}`;
 }
 
+function buildProgressReportTitle(designation, engineerName) {
+  const date = getCurrentDateFormatted();
+  return `PROGRESS REPORT - ${designation.toString().trim().toUpperCase()} - ${engineerName.toString().trim()} - AS ON ${date}.`;
+}
+
 // Format date values cleanly for export tables
 function formatDateValue(val) {
   if (!val) return '-';
@@ -1039,13 +1071,23 @@ function getFilteredTasks() {
   });
 }
 
+// Open export PDF modal and prompt for engineer name
+function openExportPdfModal() {
+  const exportPdfModal = document.getElementById('export-pdf-modal');
+  const exportEngineerNameInput = document.getElementById('export-engineer-name');
+  if (!exportPdfModal || !exportEngineerNameInput) return;
+  exportEngineerNameInput.value = '';
+  openModal(exportPdfModal);
+  setTimeout(() => exportEngineerNameInput.focus(), 100);
+}
+
 // Download PDF Report
-function downloadPdfReport() {
+function downloadPdfReport(engineerName) {
   const colKeys = CONFIG.COLUMNS;
   const filteredTasks = getFilteredTasks();
   const activeProfile = getActiveProfile();
   const totalWorks = filteredTasks.length;
-  const title = `WORKS HANDLED BY ${activeProfile.name.toUpperCase()} AT RDO KKD as on ${getCurrentDateFormatted()}`;
+  const title = buildProgressReportTitle(activeProfile.id, engineerName);
   
   // Group tasks
   const tasksByStatus = {};
@@ -1126,7 +1168,7 @@ function downloadPdfReport() {
     <html>
     <head>
       <meta charset="utf-8">
-      <title>${title}</title>
+      <title>${escapeHtml(title)}</title>
       <style>
         body {
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -1253,7 +1295,7 @@ function downloadPdfReport() {
     </head>
     <body>
       <div class="header-container">
-        <h1>${title}</h1>
+        <h1>${escapeHtml(title)}</h1>
       </div>
       <p class="total-works-summary">Total number of works: ${totalWorks}</p>
       <table>
