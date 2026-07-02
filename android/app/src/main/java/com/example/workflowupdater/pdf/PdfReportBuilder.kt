@@ -47,14 +47,24 @@ object PdfReportBuilder {
       <html>
       <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=${PdfPageSpec.a3LandscapeWidthPx()}, initial-scale=1.0">
+        <meta name="viewport" content="width=${PdfPageSpec.contentWidthPx()}, initial-scale=1.0">
         <title>${escapeHtml(title)}</title>
         <style>
+          html {
+            box-sizing: border-box;
+            overflow-x: hidden;
+          }
+          *, *::before, *::after {
+            box-sizing: inherit;
+          }
           body {
             font-family: 'Segoe UI', Roboto, sans-serif;
             color: #1e293b;
             background: white;
             margin: 1cm;
+            width: auto;
+            max-width: 100%;
+            overflow-x: hidden;
             font-size: 10.5pt;
             line-height: 1.35;
           }
@@ -81,6 +91,7 @@ object PdfReportBuilder {
           }
           table {
             width: 100%;
+            max-width: 100%;
             table-layout: fixed;
             border-collapse: collapse;
             page-break-inside: auto;
@@ -136,11 +147,11 @@ object PdfReportBuilder {
         <p class="total-works-summary">Total number of works: ${works.size}</p>
         <table>
           <colgroup>
-            <col style="width: 350px" /><col style="width: 120px" /><col style="width: 100px" />
-            <col style="width: 80px" /><col style="width: 80px" /><col style="width: 80px" />
-            <col style="width: 90px" /><col style="width: 110px" /><col style="width: 80px" />
-            <col style="width: 395px" /><col style="width: 105px" /><col style="width: 105px" />
-            <col style="width: 115px" /><col style="width: 115px" />
+            <col style="width:18.18%" /><col style="width:6.23%" /><col style="width:5.19%" />
+            <col style="width:4.16%" /><col style="width:4.16%" /><col style="width:4.16%" />
+            <col style="width:4.68%" /><col style="width:5.71%" /><col style="width:4.16%" />
+            <col style="width:20.52%" /><col style="width:5.45%" /><col style="width:5.45%" />
+            <col style="width:5.97%" /><col style="width:5.97%" />
           </colgroup>
           <thead>
             <tr>

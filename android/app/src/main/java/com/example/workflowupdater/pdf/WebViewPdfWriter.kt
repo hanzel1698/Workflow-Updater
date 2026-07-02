@@ -7,7 +7,7 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.max
+import kotlin.math.ceil
 
 /** Writes a loaded [WebView] to a multi-page A3 landscape PDF without the system print UI. */
 object WebViewPdfWriter {
@@ -28,19 +28,16 @@ object WebViewPdfWriter {
       View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
     )
 
-    val scaledContentHeight = (webView.contentHeight * webView.scale).toInt()
-    val contentHeightPx =
-      max(max(webView.measuredHeight, scaledContentHeight), pageHeightPx)
-
+    val contentHeightPx = webView.measuredHeight.coerceAtLeast(1)
     webView.layout(0, 0, pageWidthPx, contentHeightPx)
 
-    val document = PdfDocument()
-    var pageNumber = 1
-    var yOffset = 0
+    val pageCount = ceil(contentHeightPx.toDouble() / pageHeightPx).toInt().coerceAtLeast(1)
 
+    val document = PdfDocument()
     try {
-      while (yOffset < contentHeightPx) {
-        val pageInfo = PdfDocument.PageInfo.Builder(pageWidthPx, pageHeightPx, pageNumber).create()
+      for (pageIndex in 0 until pageCount) {
+        val yOffset = pageIndex * pageHeightPx
+        val pageInfo = PdfDocument.PageInfo.Builder(pageWidthPx, pageHeightPx, pageIndex + 1).create()
         val page = document.startPage(pageInfo)
         page.canvas.apply {
           drawColor(Color.WHITE)
@@ -50,8 +47,6 @@ object WebViewPdfWriter {
           restore()
         }
         document.finishPage(page)
-        yOffset += pageHeightPx
-        pageNumber++
       }
 
       FileOutputStream(outputFile).use { document.writeTo(it) }

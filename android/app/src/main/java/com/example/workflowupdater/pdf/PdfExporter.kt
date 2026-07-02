@@ -33,12 +33,14 @@ class PdfExporter(private val context: Context) {
     exportInProgress = true
 
     val pageWidthPx = PdfPageSpec.a3LandscapeWidthPx()
-    val pageHeightPx = PdfPageSpec.a3LandscapeHeightPx()
 
     val container =
       FrameLayout(activity).apply {
         layoutParams =
-          FrameLayout.LayoutParams(pageWidthPx, pageHeightPx).apply {
+          FrameLayout.LayoutParams(
+            pageWidthPx,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+          ).apply {
             leftMargin = -pageWidthPx * 2
             topMargin = 0
           }

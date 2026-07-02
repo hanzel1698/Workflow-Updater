@@ -14,5 +14,10 @@ object PdfPageSpec {
 
   fun a3LandscapeHeightPx(): Int = mmToPx(A3_LANDSCAPE_HEIGHT_MM)
 
+  /** Printable width inside 1 cm side margins on an A3 landscape page. */
+  fun contentWidthPx(): Int = a3LandscapeWidthPx() - (2 * marginPx())
+
+  private fun marginPx(): Int = mmToPx(10.0)
+
   private fun mmToPx(mm: Double, dpi: Int = LAYOUT_DPI): Int = (mm / 25.4 * dpi).roundToInt()
 }
