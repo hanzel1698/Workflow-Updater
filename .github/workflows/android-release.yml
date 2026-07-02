@@ -66,6 +66,7 @@ jobs:
             echo "Error: release APK not found"
             exit 1
           fi
+          APK=${APK#./}
           echo "path=android/$APK" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$APK")" >> "$GITHUB_OUTPUT"
 
