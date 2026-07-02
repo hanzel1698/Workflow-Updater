@@ -1,27 +1,49 @@
 package com.example.workflowupdater.ui.main
 
-import com.example.workflowupdater.data.DataRepository
-import junit.framework.TestCase.assertEquals
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.test.runTest
+import com.example.workflowupdater.data.SheetConfig
+import com.example.workflowupdater.data.StatusMapper
+import com.example.workflowupdater.data.WorkItem
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class MainScreenViewModelTest {
+class WorkflowLogicTest {
+
   @Test
-  fun uiState_initiallyLoading() = runTest {
-    val viewModel = MainScreenViewModel(FakeMyModelRepository())
-    assertEquals(viewModel.uiState.first(), MainScreenUiState.Loading)
+  fun statusMapper_mapsCategoryCodes() {
+    assertEquals("04 Detailed Design Ongoing", StatusMapper.mapCategoryToStatus("DDO", "", ""))
+    assertEquals("07 File Not Yet Opened", StatusMapper.mapCategoryToStatus("FNO", "", ""))
   }
 
   @Test
-  fun uiState_onItemSaved_isDisplayed() = runTest {
-    val viewModel = MainScreenViewModel(FakeMyModelRepository())
-    assertEquals(viewModel.uiState.first(), MainScreenUiState.Loading)
+  fun statusMapper_infersFromRemarksWhenBlank() {
+    assertEquals("06 Detailed Design Issued", StatusMapper.mapCategoryToStatus("", "Design completed and issued", ""))
+    assertEquals("07 File Not Yet Opened", StatusMapper.mapCategoryToStatus("", "Awaiting AR drawing", ""))
   }
-}
 
-private class FakeMyModelRepository : DataRepository {
-  override val data: Flow<List<String>> = flow { emit(listOf("Sample")) }
+  @Test
+  fun statusMapper_passesThroughNumberedStatus() {
+    assertEquals("02 Tentative Design On Hold", StatusMapper.mapCategoryToStatus("02 Tentative Design On Hold", "", ""))
+  }
+
+  @Test
+  fun recomputeDerived_filtersBySearchAndStatus() {
+    val works =
+      SheetConfig.MOCK_ROWS.map(WorkItem::fromRow)
+    val base = WorksUiState(isLoading = false, allWorks = works)
+
+    val bySearch = base.copy(searchQuery = "family court").recomputeDerived()
+    assertEquals(1, bySearch.filteredWorks.size)
+    assertEquals("Construction of Family Court - Kasargod", bySearch.filteredWorks.first().workName)
+
+    val byStatus = base.copy(filters = WorkFilters(statusCode = "07")).recomputeDerived()
+    assertEquals(1, byStatus.filteredWorks.size)
+  }
+
+  @Test
+  fun recomputeDerived_countsStatuses() {
+    val works = SheetConfig.MOCK_ROWS.map(WorkItem::fromRow)
+    val state = WorksUiState(isLoading = false, allWorks = works).recomputeDerived()
+    val total = state.statusCounts.values.sum()
+    assertEquals(works.size, total)
+  }
 }
