@@ -3,7 +3,6 @@ name: Android Release Build
 on:
   push:
     branches: [main, master]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -68,10 +67,37 @@ jobs:
             exit 1
           fi
           echo "path=android/$APK" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$APK")" >> "$GITHUB_OUTPUT"
 
-      - name: Upload release APK
+      - name: Extract app version
+        id: version
+        working-directory: android
+        run: |
+          GRADLE_FILE=$(find . -path "*/app/build.gradle.kts" | head -1)
+          VERSION_NAME=$(grep -E 'versionName\s*=' "$GRADLE_FILE" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          VERSION_CODE=$(grep -E 'versionCode\s*=' "$GRADLE_FILE" | head -1 | sed -E 's/.*=\s*([0-9]+).*/\1/')
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION_NAME}-build${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
+          name: app-release-${{ steps.version.outputs.tag }}
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: ${{ steps.apk.outputs.path }}
+          tag: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.name }} (build ${{ github.run_number }})
+          token: ${{ secrets.GITHUB_TOKEN }}
+          generateReleaseNotes: true
+          makeLatest: true
+          body: |
+            **Version:** ${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }})
+            **Commit:** ${{ github.sha }}
+
+            Download the APK below to install or update on your device.
