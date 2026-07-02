@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.workflowupdater.data.SheetDateFormatter
 import com.example.workflowupdater.data.WorkItem
 import com.example.workflowupdater.ui.common.statusTone
 
@@ -91,9 +92,9 @@ fun WorkDetailScreen(work: WorkItem?, onBack: () -> Unit, modifier: Modifier = M
         DetailRow("AR Status", work.arStatus)
         DetailRow("SR Status", work.srStatus)
         DetailRow("AS Order No & Date", work.asOrder)
-        DetailRow("AS Date", work.asDate)
+        DetailRow("AS Date", SheetDateFormatter.format(work.asDate))
         DetailRow("TS Order No & Date", work.tsOrder)
-        DetailRow("TS Date", work.tsDate)
+        DetailRow("TS Date", SheetDateFormatter.format(work.tsDate))
       }
 
       DetailSection(title = "Building") {
@@ -104,10 +105,10 @@ fun WorkDetailScreen(work: WorkItem?, onBack: () -> Unit, modifier: Modifier = M
       }
 
       DetailSection(title = "Timeline") {
-        DetailRow("Target Date", work.targetDate)
-        DetailRow("Tentative Issued Date", work.tentativeIssuedDate)
-        DetailRow("Detailed Design Last Issued Date", work.detailedLastIssuedDate)
-        DetailRow("Detailed Design Complete Issued Date", work.detailedCompleteIssuedDate)
+        DetailRow("Target Date", SheetDateFormatter.format(work.targetDate))
+        DetailRow("Tentative Issued Date", SheetDateFormatter.format(work.tentativeIssuedDate))
+        DetailRow("Detailed Design Last Issued Date", SheetDateFormatter.format(work.detailedLastIssuedDate))
+        DetailRow("Detailed Design Complete Issued Date", SheetDateFormatter.format(work.detailedCompleteIssuedDate))
       }
 
       DetailSection(title = "Remarks") {

@@ -2,6 +2,7 @@ package com.example.workflowupdater.pdf
 
 import com.example.workflowupdater.data.EngineerProfile
 import com.example.workflowupdater.data.SheetConfig
+import com.example.workflowupdater.data.SheetDateFormatter
 import com.example.workflowupdater.data.WorkItem
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -182,7 +183,7 @@ object PdfReportBuilder {
 
   private fun cell(value: String): String = escapeHtml(value.trim().ifBlank { "-" })
 
-  private fun formatDate(value: String): String = value.trim().ifBlank { "-" }
+  private fun formatDate(value: String): String = SheetDateFormatter.format(value).ifBlank { "-" }
 
   private fun todayFormatted(): String = SimpleDateFormat("dd-MM-yyyy", Locale.ROOT).format(Date())
 
