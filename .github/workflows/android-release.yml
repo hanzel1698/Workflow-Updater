@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -29,6 +31,9 @@ jobs:
       - name: Make gradlew executable
         working-directory: android
         run: chmod +x ./gradlew
+
+      - name: Generate release notes for APK
+        run: python3 scripts/generate-android-release-notes.py android
 
       - name: Install shared upload keystore
         env:

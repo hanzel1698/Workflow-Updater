@@ -8,6 +8,10 @@ Write-Host "=============================================" -ForegroundColor Cyan
 & (Join-Path $RootPath "scripts\sync-android-assets.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+Write-Host "[*] Generating release notes..." -ForegroundColor Yellow
+python (Join-Path $RootPath "scripts\generate-android-release-notes.py") (Join-Path $RootPath "android")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 & "$env:USERPROFILE\.android\signing\ensure-signing.ps1"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

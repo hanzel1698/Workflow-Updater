@@ -37,6 +37,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-android-release.ps1
 
 Release APK output: `android/app/build/outputs/apk/release/app-release.apk`
 
+On the first launch after installing a release APK, users see a one-time **What's New** screen. Release builds embed `app/src/main/assets/release_notes.json`, generated from recent git commits by `scripts/generate-android-release-notes.py` (also run automatically in CI before `assembleRelease`).
+
 Signing uses `android/keystore.properties` and a local keystore (not committed). Generate once:
 
 ```powershell
