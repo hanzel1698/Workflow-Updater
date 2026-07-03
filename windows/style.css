@@ -257,6 +257,31 @@ header {
   gap: 1.5rem;
 }
 
+.filter-result-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: -0.25rem;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 1rem;
+  background: hsla(var(--hue), 45%, 18%, 0.85);
+  border: 1px solid hsla(var(--hue), 40%, 35%, 0.5);
+  border-radius: var(--radius-md);
+  color: var(--color-info);
+  font-size: 0.85rem;
+  font-weight: 500;
+  animation: fadeIn var(--transition-normal);
+}
+
+.filter-result-chip svg {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.filter-result-count {
+  color: var(--text-primary);
+}
+
 .stat-card {
   background: var(--gradient-card);
   border: 1px solid var(--border-color);

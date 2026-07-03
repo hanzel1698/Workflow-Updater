@@ -6,12 +6,20 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
@@ -70,5 +78,40 @@ private fun StatChip(label: String, count: Int, selected: Boolean, onClick: () -
   ) {
     Text(text = count.toString(), style = MaterialTheme.typography.titleMedium, color = textColor)
     Text(text = label, style = MaterialTheme.typography.labelSmall, color = textColor)
+  }
+}
+
+/** Info chip shown below design-status chips when any filter is active. */
+@Composable
+fun FilterResultChip(filteredCount: Int, totalCount: Int, modifier: Modifier = Modifier) {
+  val label =
+    if (filteredCount == totalCount) {
+      "$filteredCount ${if (filteredCount == 1) "work" else "works"} match your filters"
+    } else {
+      "$filteredCount of $totalCount ${if (filteredCount == 1) "work" else "works"} match your filters"
+    }
+
+  Row(
+    modifier =
+      modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp)
+        .clip(RoundedCornerShape(12.dp))
+        .background(MaterialTheme.colorScheme.secondaryContainer)
+        .padding(horizontal = 14.dp, vertical = 10.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Icon(
+      imageVector = Icons.Filled.Info,
+      contentDescription = null,
+      tint = MaterialTheme.colorScheme.onSecondaryContainer,
+      modifier = Modifier.size(18.dp),
+    )
+    Spacer(Modifier.width(8.dp))
+    Text(
+      text = label,
+      style = MaterialTheme.typography.labelLarge,
+      color = MaterialTheme.colorScheme.onSecondaryContainer,
+    )
   }
 }

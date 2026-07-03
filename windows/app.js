@@ -223,47 +223,123 @@ function applyDropdownOptionsToForms() {
 }
 
 function updateFilterStatusDropdowns() {
-  const opts = state.dropdownOptions;
-  if (!opts) return;
+  // Filter-bar AS/AR/SR selects are populated from loaded tasks in populateDynamicFilters().
+}
 
-  const filterAsStatus = document.getElementById('filter-as-status');
-  const filterArStatus = document.getElementById('filter-ar-status');
-  const filterSrStatus = document.getElementById('filter-sr-status');
+function hasAnyActiveFilter() {
+  return !!state.searchQuery ||
+    state.activeStatusFilter !== 'ALL' ||
+    state.filters.district !== 'ALL' ||
+    state.filters.lac !== 'ALL' ||
+    state.filters.asStatus !== 'ALL' ||
+    state.filters.arStatus !== 'ALL' ||
+    state.filters.srStatus !== 'ALL';
+}
 
-  if (filterAsStatus) {
-    const current = filterAsStatus.value;
-    filterAsStatus.innerHTML = '<option value="ALL">All AS Status</option>';
-    (opts.asStatus || []).forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      filterAsStatus.appendChild(opt);
-    });
-    filterAsStatus.value = current && Array.from(filterAsStatus.options).some(o => o.value === current) ? current : 'ALL';
+function getWorksForFilterOptions(excludeFilter) {
+  const colKeys = CONFIG.COLUMNS;
+  return state.tasks.filter(task => {
+    if (state.searchQuery) {
+      const fileNum = getRowValue(task, colKeys.FILE_NUMBER).toString().toLowerCase();
+      const workName = getRowValue(task, colKeys.WORK_NAME).toString().toLowerCase();
+      const lac = getRowValue(task, colKeys.LAC).toString().toLowerCase();
+      const remarks = getRowValue(task, colKeys.REMARKS).toString().toLowerCase();
+
+      const match =
+        fileNum.includes(state.searchQuery) ||
+        workName.includes(state.searchQuery) ||
+        lac.includes(state.searchQuery) ||
+        remarks.includes(state.searchQuery);
+
+      if (!match) return false;
+    }
+
+    if (state.activeStatusFilter !== 'ALL') {
+      const status = getRowValue(task, colKeys.STATUS).toString().trim();
+      const prefix = status.substring(0, 2);
+      if (prefix !== state.activeStatusFilter) return false;
+    }
+
+    if (excludeFilter !== 'district' && state.filters.district !== 'ALL') {
+      const dist = getRowValue(task, colKeys.DISTRICT).toString().trim();
+      if (dist !== state.filters.district) return false;
+    }
+    if (excludeFilter !== 'lac' && state.filters.lac !== 'ALL') {
+      const lacVal = getRowValue(task, colKeys.LAC).toString().trim();
+      if (lacVal !== state.filters.lac) return false;
+    }
+    if (excludeFilter !== 'asStatus' && state.filters.asStatus !== 'ALL') {
+      const asVal = getRowValue(task, colKeys.AS_STATUS).toString().trim();
+      if (asVal !== state.filters.asStatus) return false;
+    }
+    if (excludeFilter !== 'arStatus' && state.filters.arStatus !== 'ALL') {
+      const arVal = getRowValue(task, colKeys.AR_STATUS).toString().trim();
+      if (arVal !== state.filters.arStatus) return false;
+    }
+    if (excludeFilter !== 'srStatus' && state.filters.srStatus !== 'ALL') {
+      const srVal = getRowValue(task, colKeys.SR_STATUS).toString().trim();
+      if (srVal !== state.filters.srStatus) return false;
+    }
+
+    return true;
+  });
+}
+
+function collectDistinctValues(works, columnKey) {
+  const values = new Set();
+  works.forEach(task => {
+    const val = getRowValue(task, columnKey);
+    if (val !== null && val !== undefined) {
+      const trimmed = val.toString().trim();
+      if (trimmed) values.add(trimmed);
+    }
+  });
+  return Array.from(values).sort();
+}
+
+function repopulateFilterSelect(selectEl, allLabel, values, stateKey) {
+  if (!selectEl) return;
+
+  const currentVal = selectEl.value;
+  selectEl.innerHTML = `<option value="ALL">${allLabel}</option>`;
+  values.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v;
+    selectEl.appendChild(opt);
+  });
+
+  if (values.includes(currentVal)) {
+    selectEl.value = currentVal;
+  } else {
+    selectEl.value = 'ALL';
+    state.filters[stateKey] = 'ALL';
   }
 
-  if (filterArStatus) {
-    const current = filterArStatus.value;
-    filterArStatus.innerHTML = '<option value="ALL">All AR Status</option>';
-    (opts.arStatus || []).forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      filterArStatus.appendChild(opt);
-    });
-    filterArStatus.value = current && Array.from(filterArStatus.options).some(o => o.value === current) ? current : 'ALL';
+  const filterItem = selectEl.closest('.filter-item');
+  if (filterItem) {
+    filterItem.style.display = values.length > 0 ? 'flex' : 'none';
+  }
+}
+
+function updateFilterResultChip(filteredCount, totalCount) {
+  const chip = dom.filterResultChip;
+  if (!chip) return;
+
+  if (!hasAnyActiveFilter()) {
+    chip.style.display = 'none';
+    return;
   }
 
-  if (filterSrStatus) {
-    const current = filterSrStatus.value;
-    filterSrStatus.innerHTML = '<option value="ALL">All SR Status</option>';
-    (opts.srStatus || []).forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      filterSrStatus.appendChild(opt);
-    });
-    filterSrStatus.value = current && Array.from(filterSrStatus.options).some(o => o.value === current) ? current : 'ALL';
+  chip.style.display = 'flex';
+  const countEl = chip.querySelector('.filter-result-count');
+  if (!countEl) return;
+
+  const workWord = filteredCount === 1 ? 'work' : 'works';
+  if (filteredCount === totalCount) {
+    countEl.textContent = `${filteredCount} ${workWord} match your filters`;
+  } else {
+    countEl.textContent = `${filteredCount} of ${totalCount} ${workWord} match your filters`;
   }
 }
 
@@ -339,6 +415,7 @@ const dom = {
   
   // Stats
   statTotal: document.getElementById('stat-total').querySelector('.number'),
+  filterResultChip: document.getElementById('filter-result-chip'),
   statCards: {
     "01": document.getElementById('stat-01').querySelector('.number'),
     "02": document.getElementById('stat-02').querySelector('.number'),
@@ -836,56 +913,26 @@ function filterTasksByProfile(allRows) {
   });
 }
 
-// Populate Dynamic Districts and LAC filters from loaded tasks
+// Populate dynamic filter dropdowns from loaded tasks (cascading by active filters)
 function populateDynamicFilters() {
   const colKeys = CONFIG.COLUMNS;
-  const districts = new Set();
-  const lacs = new Set();
-  
-  state.tasks.forEach(task => {
-    const dist = getRowValue(task, colKeys.DISTRICT);
-    const lacVal = getRowValue(task, colKeys.LAC);
-    if (dist) districts.add(dist.toString().trim());
-    if (lacVal) lacs.add(lacVal.toString().trim());
-  });
-  
-  const sortedDistricts = Array.from(districts).sort();
-  const sortedLacs = Array.from(lacs).sort();
-  
   const filterDistrict = document.getElementById('filter-district');
   const filterLac = document.getElementById('filter-lac');
-  
-  if (filterDistrict) {
-    const currentVal = filterDistrict.value;
-    filterDistrict.innerHTML = '<option value="ALL">All Districts</option>';
-    sortedDistricts.forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = d;
-      opt.textContent = d;
-      filterDistrict.appendChild(opt);
-    });
-    if (sortedDistricts.includes(currentVal)) {
-      filterDistrict.value = currentVal;
-    } else {
-      state.filters.district = 'ALL';
-    }
-  }
-  
-  if (filterLac) {
-    const currentVal = filterLac.value;
-    filterLac.innerHTML = '<option value="ALL">All LACs</option>';
-    sortedLacs.forEach(l => {
-      const opt = document.createElement('option');
-      opt.value = l;
-      opt.textContent = l;
-      filterLac.appendChild(opt);
-    });
-    if (sortedLacs.includes(currentVal)) {
-      filterLac.value = currentVal;
-    } else {
-      state.filters.lac = 'ALL';
-    }
-  }
+  const filterAsStatus = document.getElementById('filter-as-status');
+  const filterArStatus = document.getElementById('filter-ar-status');
+  const filterSrStatus = document.getElementById('filter-sr-status');
+
+  const districtValues = collectDistinctValues(getWorksForFilterOptions('district'), colKeys.DISTRICT);
+  const lacValues = collectDistinctValues(getWorksForFilterOptions('lac'), colKeys.LAC);
+  const asValues = collectDistinctValues(getWorksForFilterOptions('asStatus'), colKeys.AS_STATUS);
+  const arValues = collectDistinctValues(getWorksForFilterOptions('arStatus'), colKeys.AR_STATUS);
+  const srValues = collectDistinctValues(getWorksForFilterOptions('srStatus'), colKeys.SR_STATUS);
+
+  repopulateFilterSelect(filterDistrict, 'All Districts', districtValues, 'district');
+  repopulateFilterSelect(filterLac, 'All LACs', lacValues, 'lac');
+  repopulateFilterSelect(filterAsStatus, 'All AS Status', asValues, 'asStatus');
+  repopulateFilterSelect(filterArStatus, 'All AR Status', arValues, 'arStatus');
+  repopulateFilterSelect(filterSrStatus, 'All SR Status', srValues, 'srStatus');
 }
 
 // Fetch sheet data
@@ -1593,10 +1640,12 @@ function renderDashboard() {
   }
 
   // Apply filters to task list
+  populateDynamicFilters();
   const filteredTasks = getFilteredTasks();
 
   // Update display count text
   dom.taskCountBadge.textContent = `Showing ${filteredTasks.length} of ${totalCount} works`;
+  updateFilterResultChip(filteredTasks.length, totalCount);
 
   // Render cards
   if (filteredTasks.length === 0) {
@@ -2374,11 +2423,15 @@ function switchView(viewName) {
   // Hide filters and dashboard search container inside Calendar or Analytics views
   const dbSearchContainer = document.getElementById('dashboard-search-container');
   const filtersBar = document.getElementById('filters-bar');
+  const filterResultChip = document.getElementById('filter-result-chip');
   if (dbSearchContainer) {
     dbSearchContainer.style.display = viewName === 'LIST' ? 'flex' : 'none';
   }
   if (filtersBar) {
     filtersBar.style.display = viewName === 'LIST' ? 'flex' : 'none';
+  }
+  if (filterResultChip) {
+    filterResultChip.style.display = viewName === 'LIST' && hasAnyActiveFilter() ? 'flex' : 'none';
   }
   
   if (viewName === 'LIST') {

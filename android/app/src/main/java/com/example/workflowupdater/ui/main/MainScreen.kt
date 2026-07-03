@@ -140,6 +140,10 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
         selectedCode = state.filters.statusCode,
         onChipClick = viewModel::onStatusChipSelected,
       )
+      if (state.hasAnyFilter) {
+        Spacer(Modifier.height(8.dp))
+        FilterResultChip(filteredCount = state.filteredWorks.size, totalCount = state.allWorks.size)
+      }
       Spacer(Modifier.height(8.dp))
 
       if (state.isOffline) {
@@ -174,6 +178,9 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
       sheetState = filterSheetState,
       districtOptions = state.districtOptions,
       lacOptions = state.lacOptions,
+      asStatusOptions = state.asStatusOptions,
+      arStatusOptions = state.arStatusOptions,
+      srStatusOptions = state.srStatusOptions,
       filters = state.filters,
       onApply = viewModel::applyFilters,
       onDismiss = { showFilterSheet = false },
