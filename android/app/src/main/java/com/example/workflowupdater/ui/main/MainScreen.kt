@@ -139,6 +139,8 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
         statusCounts = state.statusCounts,
         selectedCode = state.filters.statusCode,
         onChipClick = viewModel::onStatusChipSelected,
+        hasAnyFilter = state.hasAnyFilter,
+        onClearAllFilters = viewModel::clearAllFilters,
       )
       if (state.hasAnyFilter) {
         Spacer(Modifier.height(8.dp))

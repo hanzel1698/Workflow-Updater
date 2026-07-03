@@ -90,13 +90,23 @@ fun WorksUiState.recomputeDerived(): WorksUiState {
 
   val filtered =
     allWorks.filter { work ->
-    work.matchesSearch() &&
-      (sanitizedFilters.district == null || work.district == sanitizedFilters.district) &&
-      (sanitizedFilters.lac == null || work.lac == sanitizedFilters.lac) &&
-      (sanitizedFilters.asStatus == null || work.asStatus == sanitizedFilters.asStatus) &&
-      (sanitizedFilters.arStatus == null || work.arStatus == sanitizedFilters.arStatus) &&
-      (sanitizedFilters.srStatus == null || work.srStatus == sanitizedFilters.srStatus) &&
-      (sanitizedFilters.statusCode == null || work.statusCode == sanitizedFilters.statusCode)
+      work.matchesSearch() &&
+        (sanitizedFilters.district == null || work.district == sanitizedFilters.district) &&
+        (sanitizedFilters.lac == null || work.lac == sanitizedFilters.lac) &&
+        (sanitizedFilters.asStatus == null || work.asStatus == sanitizedFilters.asStatus) &&
+        (sanitizedFilters.arStatus == null || work.arStatus == sanitizedFilters.arStatus) &&
+        (sanitizedFilters.srStatus == null || work.srStatus == sanitizedFilters.srStatus) &&
+        (sanitizedFilters.statusCode == null || work.statusCode == sanitizedFilters.statusCode)
+    }
+
+  val poolForStatusChips =
+    allWorks.filter { work ->
+      work.matchesSearch() &&
+        (sanitizedFilters.district == null || work.district == sanitizedFilters.district) &&
+        (sanitizedFilters.lac == null || work.lac == sanitizedFilters.lac) &&
+        (sanitizedFilters.asStatus == null || work.asStatus == sanitizedFilters.asStatus) &&
+        (sanitizedFilters.arStatus == null || work.arStatus == sanitizedFilters.arStatus) &&
+        (sanitizedFilters.srStatus == null || work.srStatus == sanitizedFilters.srStatus)
     }
 
   return copy(
@@ -107,6 +117,6 @@ fun WorksUiState.recomputeDerived(): WorksUiState {
     asStatusOptions = asStatusOptions,
     arStatusOptions = arStatusOptions,
     srStatusOptions = srStatusOptions,
-    statusCounts = allWorks.groupingBy { it.statusCode }.eachCount(),
+    statusCounts = poolForStatusChips.groupingBy { it.statusCode }.eachCount(),
   )
 }

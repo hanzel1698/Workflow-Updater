@@ -257,6 +257,38 @@ header {
   gap: 1.5rem;
 }
 
+.stats-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.stats-row .stats-grid {
+  flex: 1;
+  min-width: 0;
+}
+
+.clear-all-filters-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.clear-all-filters-btn:hover {
+  border-color: var(--color-accent);
+  background: var(--bg-card-hover);
+  box-shadow: 0 0 16px -4px hsla(262, 83%, 68%, 0.35);
+}
+
 .filter-result-chip {
   display: flex;
   align-items: center;
