@@ -40,10 +40,37 @@ class WorkflowLogicTest {
   }
 
   @Test
-  fun recomputeDerived_countsStatuses() {
+  fun recomputeDerived_buildsDynamicFilterOptionsFromWorks() {
     val works = SheetConfig.MOCK_ROWS.map(WorkItem::fromRow)
     val state = WorksUiState(isLoading = false, allWorks = works).recomputeDerived()
-    val total = state.statusCounts.values.sum()
-    assertEquals(works.size, total)
+
+    assert(state.districtOptions.isNotEmpty())
+    assert(state.asStatusOptions.isNotEmpty())
+    assert(state.asStatusOptions.all { option -> works.any { it.asStatus == option } })
+    assert(state.arStatusOptions.all { option -> works.any { it.arStatus == option } })
+    assert(state.srStatusOptions.all { option -> works.any { it.srStatus == option } })
+  }
+
+  @Test
+  fun recomputeDerived_cascadesFilterOptionsWhenDistrictSelected() {
+    val works = SheetConfig.MOCK_ROWS.map(WorkItem::fromRow)
+    val district = works.first().district
+    val state =
+      WorksUiState(isLoading = false, allWorks = works, filters = WorkFilters(district = district))
+        .recomputeDerived()
+
+    val lacsInDistrict =
+      works.filter { it.district == district }.map { it.lac }.filter { it.isNotBlank() }.distinct().sorted()
+    assertEquals(lacsInDistrict, state.lacOptions)
+  }
+
+  @Test
+  fun recomputeDerived_clearsInvalidFilterSelections() {
+    val works = SheetConfig.MOCK_ROWS.map(WorkItem::fromRow)
+    val state =
+      WorksUiState(isLoading = false, allWorks = works, filters = WorkFilters(district = "Nonexistent District"))
+        .recomputeDerived()
+
+    assertEquals(null, state.filters.district)
   }
 }

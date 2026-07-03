@@ -26,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.workflowupdater.data.SheetConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +33,9 @@ fun FilterSheet(
   sheetState: SheetState,
   districtOptions: List<String>,
   lacOptions: List<String>,
+  asStatusOptions: List<String>,
+  arStatusOptions: List<String>,
+  srStatusOptions: List<String>,
   filters: WorkFilters,
   onApply: (WorkFilters) -> Unit,
   onDismiss: () -> Unit,
@@ -63,11 +65,17 @@ fun FilterSheet(
         FilterGroup("LAC", lacOptions, lac) { lac = if (lac == it) null else it }
         Spacer(Modifier.height(16.dp))
       }
-      FilterGroup("AS Status", SheetConfig.FALLBACK_AS_STATUS, asStatus) { asStatus = if (asStatus == it) null else it }
-      Spacer(Modifier.height(16.dp))
-      FilterGroup("AR Status", SheetConfig.FALLBACK_AR_STATUS, arStatus) { arStatus = if (arStatus == it) null else it }
-      Spacer(Modifier.height(16.dp))
-      FilterGroup("SR Status", SheetConfig.FALLBACK_SR_STATUS, srStatus) { srStatus = if (srStatus == it) null else it }
+      if (asStatusOptions.isNotEmpty()) {
+        FilterGroup("AS Status", asStatusOptions, asStatus) { asStatus = if (asStatus == it) null else it }
+        Spacer(Modifier.height(16.dp))
+      }
+      if (arStatusOptions.isNotEmpty()) {
+        FilterGroup("AR Status", arStatusOptions, arStatus) { arStatus = if (arStatus == it) null else it }
+        Spacer(Modifier.height(16.dp))
+      }
+      if (srStatusOptions.isNotEmpty()) {
+        FilterGroup("SR Status", srStatusOptions, srStatus) { srStatus = if (srStatus == it) null else it }
+      }
 
       Spacer(Modifier.height(20.dp))
       HorizontalDivider()

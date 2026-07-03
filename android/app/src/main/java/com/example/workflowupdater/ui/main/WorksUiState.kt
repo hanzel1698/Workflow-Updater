@@ -28,6 +28,9 @@ data class WorksUiState(
   val filters: WorkFilters = WorkFilters(),
   val districtOptions: List<String> = emptyList(),
   val lacOptions: List<String> = emptyList(),
+  val asStatusOptions: List<String> = emptyList(),
+  val arStatusOptions: List<String> = emptyList(),
+  val srStatusOptions: List<String> = emptyList(),
   val statusCounts: Map<String, Int> = emptyMap(),
   val isOffline: Boolean = false,
   val errorMessage: String? = null,
@@ -42,28 +45,68 @@ data class WorksUiState(
 fun WorksUiState.recomputeDerived(): WorksUiState {
   val query = searchQuery.trim().lowercase()
 
+  fun WorkItem.matchesSearch(): Boolean =
+    query.isBlank() ||
+      workName.lowercase().contains(query) ||
+      fileNumber.lowercase().contains(query) ||
+      lac.lowercase().contains(query) ||
+      remarks.lowercase().contains(query)
+
+  fun filterWorks(
+    district: String? = filters.district,
+    lac: String? = filters.lac,
+    asStatus: String? = filters.asStatus,
+    arStatus: String? = filters.arStatus,
+    srStatus: String? = filters.srStatus,
+    statusCode: String? = filters.statusCode,
+  ): List<WorkItem> =
+    allWorks.filter { work ->
+      work.matchesSearch() &&
+        (district == null || work.district == district) &&
+        (lac == null || work.lac == lac) &&
+        (asStatus == null || work.asStatus == asStatus) &&
+        (arStatus == null || work.arStatus == arStatus) &&
+        (srStatus == null || work.srStatus == srStatus) &&
+        (statusCode == null || work.statusCode == statusCode)
+    }
+
+  fun distinctOptions(works: List<WorkItem>, selector: (WorkItem) -> String): List<String> =
+    works.map(selector).filter { it.isNotBlank() }.distinct().sorted()
+
+  val districtOptions = distinctOptions(filterWorks(district = null)) { it.district }
+  val lacOptions = distinctOptions(filterWorks(lac = null)) { it.lac }
+  val asStatusOptions = distinctOptions(filterWorks(asStatus = null)) { it.asStatus }
+  val arStatusOptions = distinctOptions(filterWorks(arStatus = null)) { it.arStatus }
+  val srStatusOptions = distinctOptions(filterWorks(srStatus = null)) { it.srStatus }
+
+  val sanitizedFilters =
+    filters.copy(
+      district = filters.district?.takeIf { it in districtOptions },
+      lac = filters.lac?.takeIf { it in lacOptions },
+      asStatus = filters.asStatus?.takeIf { it in asStatusOptions },
+      arStatus = filters.arStatus?.takeIf { it in arStatusOptions },
+      srStatus = filters.srStatus?.takeIf { it in srStatusOptions },
+    )
+
   val filtered =
     allWorks.filter { work ->
-      val matchesSearch =
-        query.isBlank() ||
-          work.workName.lowercase().contains(query) ||
-          work.fileNumber.lowercase().contains(query) ||
-          work.lac.lowercase().contains(query) ||
-          work.remarks.lowercase().contains(query)
-
-      matchesSearch &&
-        (filters.district == null || work.district == filters.district) &&
-        (filters.lac == null || work.lac == filters.lac) &&
-        (filters.asStatus == null || work.asStatus == filters.asStatus) &&
-        (filters.arStatus == null || work.arStatus == filters.arStatus) &&
-        (filters.srStatus == null || work.srStatus == filters.srStatus) &&
-        (filters.statusCode == null || work.statusCode == filters.statusCode)
+    work.matchesSearch() &&
+      (sanitizedFilters.district == null || work.district == sanitizedFilters.district) &&
+      (sanitizedFilters.lac == null || work.lac == sanitizedFilters.lac) &&
+      (sanitizedFilters.asStatus == null || work.asStatus == sanitizedFilters.asStatus) &&
+      (sanitizedFilters.arStatus == null || work.arStatus == sanitizedFilters.arStatus) &&
+      (sanitizedFilters.srStatus == null || work.srStatus == sanitizedFilters.srStatus) &&
+      (sanitizedFilters.statusCode == null || work.statusCode == sanitizedFilters.statusCode)
     }
 
   return copy(
+    filters = sanitizedFilters,
     filteredWorks = filtered,
-    districtOptions = allWorks.map { it.district }.filter { it.isNotBlank() }.distinct().sorted(),
-    lacOptions = allWorks.map { it.lac }.filter { it.isNotBlank() }.distinct().sorted(),
+    districtOptions = districtOptions,
+    lacOptions = lacOptions,
+    asStatusOptions = asStatusOptions,
+    arStatusOptions = arStatusOptions,
+    srStatusOptions = srStatusOptions,
     statusCounts = allWorks.groupingBy { it.statusCode }.eachCount(),
   )
 }
