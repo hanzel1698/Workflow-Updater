@@ -73,4 +73,21 @@ class WorkflowLogicTest {
 
     assertEquals(null, state.filters.district)
   }
+
+  @Test
+  fun recomputeDerived_countsStatusesFromFilteredPool() {
+    val works = SheetConfig.MOCK_ROWS.map(WorkItem::fromRow)
+    val state = WorksUiState(isLoading = false, allWorks = works).recomputeDerived()
+    val total = state.statusCounts.values.sum()
+    assertEquals(works.size, total)
+
+    val district = works.first().district
+    val narrowed =
+      WorksUiState(isLoading = false, allWorks = works, filters = WorkFilters(district = district))
+        .recomputeDerived()
+    val expectedPool = works.filter { it.district == district }
+    val expectedTotal = expectedPool.size
+    assertEquals(expectedTotal, narrowed.statusCounts.values.sum())
+    assert(narrowed.statusCounts.keys.all { code -> expectedPool.any { it.statusCode == code } })
+  }
 }

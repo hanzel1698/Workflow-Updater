@@ -254,7 +254,7 @@ function getWorksForFilterOptions(excludeFilter) {
       if (!match) return false;
     }
 
-    if (state.activeStatusFilter !== 'ALL') {
+    if (excludeFilter !== 'status' && state.activeStatusFilter !== 'ALL') {
       const status = getRowValue(task, colKeys.STATUS).toString().trim();
       const prefix = status.substring(0, 2);
       if (prefix !== state.activeStatusFilter) return false;
@@ -343,6 +343,40 @@ function updateFilterResultChip(filteredCount, totalCount) {
   }
 }
 
+function clearAllFilters() {
+  state.searchQuery = '';
+  state.activeStatusFilter = 'ALL';
+  state.filters = {
+    district: 'ALL',
+    lac: 'ALL',
+    asStatus: 'ALL',
+    arStatus: 'ALL',
+    srStatus: 'ALL'
+  };
+  state.expandedGroups.clear();
+
+  dom.searchInput.value = '';
+  const dbSearchInput = document.getElementById('dashboard-search-input');
+  if (dbSearchInput) dbSearchInput.value = '';
+
+  const filterDistrict = document.getElementById('filter-district');
+  const filterLac = document.getElementById('filter-lac');
+  const filterAsStatus = document.getElementById('filter-as-status');
+  const filterArStatus = document.getElementById('filter-ar-status');
+  const filterSrStatus = document.getElementById('filter-sr-status');
+  const resetFiltersBtn = document.getElementById('reset-filters-btn');
+
+  if (filterDistrict) filterDistrict.value = 'ALL';
+  if (filterLac) filterLac.value = 'ALL';
+  if (filterAsStatus) filterAsStatus.value = 'ALL';
+  if (filterArStatus) filterArStatus.value = 'ALL';
+  if (filterSrStatus) filterSrStatus.value = 'ALL';
+  if (resetFiltersBtn) resetFiltersBtn.style.display = 'none';
+
+  renderDashboard();
+  showToast('All filters cleared', 'info');
+}
+
 // Map spreadsheet category code to full status string
 function mapCategoryToStatus(category, remarks, presentStatus) {
   if (!category) {
@@ -416,6 +450,7 @@ const dom = {
   // Stats
   statTotal: document.getElementById('stat-total').querySelector('.number'),
   filterResultChip: document.getElementById('filter-result-chip'),
+  clearAllFiltersBtn: document.getElementById('clear-all-filters-btn'),
   statCards: {
     "01": document.getElementById('stat-01').querySelector('.number'),
     "02": document.getElementById('stat-02').querySelector('.number'),
@@ -613,6 +648,10 @@ function setupEventListeners() {
         setActiveStatusFilter(prefix);
       });
     }
+  }
+
+  if (dom.clearAllFiltersBtn) {
+    dom.clearAllFiltersBtn.addEventListener('click', clearAllFilters);
   }
 
   // View Switchers Event Listeners
@@ -1606,11 +1645,11 @@ function renderDashboard() {
   }
 
   const colKeys = CONFIG.COLUMNS;
-  
-  // Calculate dynamic stats
-  let totalCount = state.tasks.length;
-  
-  // Initialize counts for all 9 design statuses
+  const totalCount = state.tasks.length;
+  const poolForStatusChips = getWorksForFilterOptions('status');
+  const poolCount = poolForStatusChips.length;
+
+  // Count design statuses in the current filtered pool (excluding status filter)
   const statusCounts = {
     "01": 0,
     "02": 0,
@@ -1623,7 +1662,7 @@ function renderDashboard() {
     "09": 0
   };
 
-  state.tasks.forEach(task => {
+  poolForStatusChips.forEach(task => {
     const status = getRowValue(task, colKeys.STATUS).toString().trim();
     const prefix = status.substring(0, 2);
     if (statusCounts[prefix] !== undefined) {
@@ -1631,12 +1670,22 @@ function renderDashboard() {
     }
   });
 
-  // Update dynamic count statistics labels with animation
-  animateCount(dom.statTotal, totalCount);
+  const statTotalEl = document.getElementById('stat-total');
+  if (statTotalEl) {
+    statTotalEl.style.display = poolCount > 0 ? '' : 'none';
+    animateCount(dom.statTotal, poolCount);
+  }
+
   for (const prefix in statusCounts) {
-    if (dom.statCards[prefix]) {
+    const el = document.getElementById(`stat-${prefix}`);
+    if (dom.statCards[prefix] && el) {
       animateCount(dom.statCards[prefix], statusCounts[prefix]);
+      el.style.display = statusCounts[prefix] > 0 ? '' : 'none';
     }
+  }
+
+  if (dom.clearAllFiltersBtn) {
+    dom.clearAllFiltersBtn.style.display = hasAnyActiveFilter() ? 'flex' : 'none';
   }
 
   // Apply filters to task list

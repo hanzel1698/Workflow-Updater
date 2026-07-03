@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterAltOff
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,28 +29,53 @@ import com.example.workflowupdater.data.SheetConfig
 import com.example.workflowupdater.ui.common.statusTone
 
 /** Horizontally scrollable KPI chips, mirroring the stats grid on the desktop dashboard.
- *  Tapping a chip toggles it as the active status filter. */
+ *  Tapping a chip toggles it as the active status filter. Only statuses present in the
+ *  current filtered pool are shown. */
 @Composable
 fun StatChipsRow(
   statusCounts: Map<String, Int>,
   selectedCode: String?,
   onChipClick: (String?) -> Unit,
+  hasAnyFilter: Boolean,
+  onClearAllFilters: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val total = statusCounts.values.sum()
+  val visibleStatusCodes =
+    SheetConfig.STATUS_SHORT_LABELS.keys.filter { (statusCounts[it] ?: 0) > 0 }
+
   Row(
-    modifier = modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    modifier = modifier.fillMaxWidth().padding(end = 8.dp),
+    verticalAlignment = Alignment.CenterVertically,
   ) {
-    StatChip(label = "All works", count = total, selected = selectedCode == null, onClick = { onChipClick(null) })
-    SheetConfig.STATUS_SHORT_LABELS.forEach { (code, label) ->
-      StatChip(
-        label = label,
-        count = statusCounts[code] ?: 0,
-        selected = selectedCode == code,
-        code = code,
-        onClick = { onChipClick(code) },
-      )
+    Row(
+      modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(start = 16.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      if (total > 0) {
+        StatChip(label = "All works", count = total, selected = selectedCode == null, onClick = { onChipClick(null) })
+      }
+      visibleStatusCodes.forEach { code ->
+        val label = SheetConfig.STATUS_SHORT_LABELS[code] ?: code
+        StatChip(
+          label = label,
+          count = statusCounts[code] ?: 0,
+          selected = selectedCode == code,
+          code = code,
+          onClick = { onChipClick(code) },
+        )
+      }
+    }
+
+    if (hasAnyFilter) {
+      IconButton(onClick = onClearAllFilters, modifier = Modifier.size(40.dp)) {
+        Icon(
+          imageVector = Icons.Filled.FilterAltOff,
+          contentDescription = "Clear all filters",
+          tint = MaterialTheme.colorScheme.primary,
+          modifier = Modifier.size(22.dp),
+        )
+      }
     }
   }
 }
