@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — RDO KKD Workflow Updater</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      line-height: 1.6;
+      max-width: 720px;
+      margin: 2rem auto;
+      padding: 0 1.25rem;
+      color: #1a1a1a;
+      background: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e8e8e8; background: #121212; }
+      a { color: #8ab4f8; }
+    }
+    h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.15rem; margin-top: 1.75rem; }
+    .meta { color: #666; font-size: 0.95rem; margin-bottom: 1.5rem; }
+    @media (prefers-color-scheme: dark) { .meta { color: #aaa; } }
+    ul { padding-left: 1.25rem; }
+    li { margin: 0.35rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="meta"><strong>RDO KKD Workflow Updater</strong> (package: <code>in.rdokk.workflowupdater</code>)<br>
+  Last updated: 3 July 2026</p>
+
+  <p>
+    This app is an internal workflow viewer for the RDO KKD design office.
+    It displays work data from a shared Google Sheet and lets you export PDF reports.
+    This policy explains what the app does with information on your device.
+  </p>
+
+  <h2>Information we collect</h2>
+  <p>The app does <strong>not</strong> collect, sell, or transmit personal data to the developer.</p>
+  <ul>
+    <li><strong>Google Sheet data</strong> — When you use the app, it downloads workflow rows from a Google Apps Script endpoint connected to the office spreadsheet. That data is shown on screen and may be included in PDF exports you create.</li>
+    <li><strong>On-device preferences</strong> — Your selected engineer profile, default profile choice, and release-notes “seen” state are stored locally on your phone using Android SharedPreferences. This data stays on your device.</li>
+    <li><strong>PDF export</strong> — When you export a report, the name you enter is used only in the generated PDF title and file name on your device. It is not sent to the developer.</li>
+  </ul>
+
+  <h2>Information we do not collect</h2>
+  <ul>
+    <li>No account sign-in inside the app</li>
+    <li>No analytics or advertising SDKs</li>
+    <li>No crash reporting services operated by the developer</li>
+    <li>No contact list, location, camera, microphone, or SMS access</li>
+  </ul>
+
+  <h2>Network use</h2>
+  <p>
+    The app requires <strong>Internet</strong> access to load live workflow data from Google’s servers (Apps Script / Google Sheets).
+    If the network is unavailable, the app may show previously loaded or sample data where implemented.
+  </p>
+
+  <h2>Third parties</h2>
+  <p>
+    Data requests go to Google (Apps Script / Sheets) as configured for the RDO KKD workflow sheet.
+    Google’s own privacy policies apply to how Google processes that traffic.
+    The developer does not operate a separate backend server for this app.
+  </p>
+
+  <h2>Children</h2>
+  <p>This app is intended for professional use by RDO KKD staff and is not directed at children under 13.</p>
+
+  <h2>Data retention and deletion</h2>
+  <p>
+    Local preferences remain until you clear app data or uninstall the app.
+    To remove on-device data: Android Settings → Apps → RDO KKD Workflow Updater → Storage → Clear data, or uninstall the app.
+  </p>
+
+  <h2>Changes</h2>
+  <p>We may update this policy when the app changes. The “Last updated” date above will be revised accordingly.</p>
+
+  <h2>Contact</h2>
+  <p>
+    For privacy questions about this app, contact the RDO KKD design office maintainer:
+    <a href="mailto:ad.rdokk@gmail.com">ad.rdokk@gmail.com</a>.
+  </p>
+</body>
+</html>

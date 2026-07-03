@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.example.workflowupdater.releasenotes.WhatsNewGate
+import com.example.workflowupdater.ui.main.DefaultProfileGate
 import com.example.workflowupdater.theme.WorkflowUpdaterTheme
 
 class MainActivity : ComponentActivity() {
@@ -13,7 +14,9 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     setContent {
       WorkflowUpdaterTheme {
-        WhatsNewGate { MainNavigation() }
+        WhatsNewGate {
+          DefaultProfileGate { MainNavigation() }
+        }
       }
     }
   }

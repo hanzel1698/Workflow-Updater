@@ -40,17 +40,26 @@ class DefaultWorkflowRepository(private val remote: SheetsRemoteDataSource = She
       errorMessage = result.exceptionOrNull()?.message ?: "Could not reach the live sheet",
     )
   }
-
-  private fun filterAndNormalize(rows: List<Map<String, String>>, profile: EngineerProfile): List<WorkItem> {
-    val targetOffice = SheetConfig.DESIGN_OFFICE.lowercase()
-    val targetAse = profile.id.lowercase()
-
-    return rows
-      .filter { row ->
-        val office = rowValue(row, SheetConfig.Columns.DESIGN_OFFICE).lowercase()
-        val ase = rowValue(row, SheetConfig.Columns.ASE).lowercase().trim()
-        office.contains(targetOffice) && ase == targetAse
-      }
-      .map(WorkItem::fromRow)
-  }
 }
+
+/** Filters sheet rows to RDO KKD works for one engineer or all configured engineers. */
+internal fun filterRowsForProfile(rows: List<Map<String, String>>, profile: EngineerProfile): List<WorkItem> {
+  val targetOffice = SheetConfig.DESIGN_OFFICE.lowercase()
+  val allowedAseIds =
+    if (SheetConfig.isAllProfile(profile)) {
+      SheetConfig.ENGINEER_PROFILE_IDS.map { it.lowercase() }.toSet()
+    } else {
+      setOf(profile.id.lowercase())
+    }
+
+  return rows
+    .filter { row ->
+      val office = rowValue(row, SheetConfig.Columns.DESIGN_OFFICE).lowercase()
+      val ase = rowValue(row, SheetConfig.Columns.ASE).lowercase().trim()
+      office.contains(targetOffice) && ase in allowedAseIds
+    }
+    .map(WorkItem::fromRow)
+}
+
+private fun DefaultWorkflowRepository.filterAndNormalize(rows: List<Map<String, String>>, profile: EngineerProfile): List<WorkItem> =
+  filterRowsForProfile(rows, profile)

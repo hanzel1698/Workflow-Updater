@@ -17,7 +17,12 @@ class WorksViewModel(private val repository: WorkflowRepository, private val pro
   ViewModel() {
 
   private val _uiState =
-    MutableStateFlow(WorksUiState(activeProfile = SheetConfig.profileById(profilePrefs.activeProfileId)))
+    MutableStateFlow(
+      WorksUiState(
+        activeProfile = SheetConfig.profileById(profilePrefs.launchProfileId()),
+        defaultProfileId = profilePrefs.defaultProfileId,
+      ),
+    )
   val uiState: StateFlow<WorksUiState> = _uiState.asStateFlow()
 
   init {
@@ -52,6 +57,12 @@ class WorksViewModel(private val repository: WorkflowRepository, private val pro
     profilePrefs.activeProfileId = profile.id
     _uiState.update { it.copy(activeProfile = profile, allWorks = emptyList(), filters = WorkFilters()).recomputeDerived() }
     refresh()
+  }
+
+  fun setDefaultProfile(profile: EngineerProfile) {
+    if (profile.id == _uiState.value.defaultProfileId) return
+    profilePrefs.setDefaultProfile(profile.id)
+    _uiState.update { it.copy(defaultProfileId = profile.id) }
   }
 
   fun onSearchQueryChange(query: String) {

@@ -21,6 +21,7 @@ data class WorksUiState(
   val isLoading: Boolean = true,
   val isRefreshing: Boolean = false,
   val activeProfile: EngineerProfile = SheetConfig.profileById(SheetConfig.DEFAULT_PROFILE_ID),
+  val defaultProfileId: String = SheetConfig.DEFAULT_PROFILE_ID,
   val allWorks: List<WorkItem> = emptyList(),
   val filteredWorks: List<WorkItem> = emptyList(),
   val searchQuery: String = "",

@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.workflowupdater.data.SheetConfig
 
 @Composable
 fun ExportPdfNameDialog(
@@ -26,6 +27,12 @@ fun ExportPdfNameDialog(
   var engineerName by remember { mutableStateOf("") }
   val trimmedName = engineerName.trim()
   val isValid = trimmedName.isNotEmpty()
+  val profileHint =
+    if (designation == SheetConfig.ALL_PROFILE_ID) {
+      "Report covers all RDO KKD engineers."
+    } else {
+      "Profile: $designation"
+    }
 
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -33,7 +40,7 @@ fun ExportPdfNameDialog(
     text = {
       Column {
         Text(
-          text = "Enter your name for the report title and file name (profile: $designation).",
+          text = "Enter your name for the report title and file name. $profileHint",
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

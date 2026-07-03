@@ -18,6 +18,9 @@ object SheetConfig {
   const val SHEET_NAME = "WORKFLOW MONITORING SHEET"
   const val DESIGN_OFFICE = "RDO KKD"
   const val DEFAULT_PROFILE_ID = "AD"
+  const val ALL_PROFILE_ID = "ALL"
+
+  val ALL_PROFILE = EngineerProfile(id = ALL_PROFILE_ID, name = "All engineers")
 
   val PROFILES =
     listOf(
@@ -29,7 +32,18 @@ object SheetConfig {
       EngineerProfile(id = "AHE02", name = "AHE02"),
     )
 
-  fun profileById(id: String): EngineerProfile = PROFILES.find { it.id == id } ?: PROFILES.first()
+  /** Engineer ids used when the All profile is active (RDO KKD rows for every configured engineer). */
+  val ENGINEER_PROFILE_IDS: Set<String> = PROFILES.map { it.id }.toSet()
+
+  fun selectableProfiles(): List<EngineerProfile> = listOf(ALL_PROFILE) + PROFILES
+
+  fun profileById(id: String): EngineerProfile =
+    when (id) {
+      ALL_PROFILE_ID -> ALL_PROFILE
+      else -> PROFILES.find { it.id == id } ?: PROFILES.first()
+    }
+
+  fun isAllProfile(profile: EngineerProfile): Boolean = profile.id == ALL_PROFILE_ID
 
   /** The nine canonical design-status categories used for grouping, filtering and KPIs. */
   val STATUS_OPTIONS =

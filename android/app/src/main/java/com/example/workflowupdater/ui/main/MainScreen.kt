@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.workflowupdater.data.SheetConfig
 import com.example.workflowupdater.pdf.PdfExporter
 import com.example.workflowupdater.pdf.rememberPdfExporter
 
@@ -80,7 +81,12 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
           Column {
             Text(text = "RDO KKD Works", style = MaterialTheme.typography.titleLarge, maxLines = 1)
             Text(
-              text = "Engineer ${state.activeProfile.id} \u2022 ${state.filteredWorks.size} shown",
+              text =
+                if (SheetConfig.isAllProfile(state.activeProfile)) {
+                  "All engineers \u2022 ${state.filteredWorks.size} shown"
+                } else {
+                  "Engineer ${state.activeProfile.id} \u2022 ${state.filteredWorks.size} shown"
+                },
               style = MaterialTheme.typography.labelMedium,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
               maxLines = 1,
@@ -178,7 +184,12 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
     ProfileSheet(
       sheetState = profileSheetState,
       activeProfile = state.activeProfile,
+      defaultProfileId = state.defaultProfileId,
       onSelect = viewModel::selectProfile,
+      onSetDefault = { profile ->
+        viewModel.setDefaultProfile(profile)
+        Toast.makeText(context, "${profileDisplayName(profile)} set as default on app launch", Toast.LENGTH_SHORT).show()
+      },
       onDismiss = { showProfileSheet = false },
     )
   }
