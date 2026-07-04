@@ -1,0 +1,178 @@
+name: Bump versionCode and Build for Play
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_by:
+        description: Increment versionCode by this amount
+        required: false
+        default: "1"
+        type: string
+      version_name:
+        description: New versionName (leave empty to keep current)
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bump-and-build:
+    name: Bump versionCode and build Play AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump versionCode
+        id: bump
+        run: |
+          set -euo pipefail
+          GRADLE_FILE="app/build.gradle.kts"
+          CURRENT=$(grep -E 'versionCode\s*=' "$GRADLE_FILE" | head -1 | sed -E 's/.*=\s*([0-9]+).*/\1/')
+          BUMP_BY="${{ github.event.inputs.bump_by }}"
+          BUMP_BY="${BUMP_BY:-1}"
+          NEW_CODE=$((CURRENT + BUMP_BY))
+          sed -i -E "s/(versionCode[[:space:]]*=[[:space:]]*)[0-9]+/\1${NEW_CODE}/" "$GRADLE_FILE"
+          if [[ -n "${{ github.event.inputs.version_name }}" ]]; then
+            NEW_NAME="${{ github.event.inputs.version_name }}"
+            sed -i -E "s/(versionName[[:space:]]*=[[:space:]]*)\"[^\"]+\"/\1\"${NEW_NAME}\"/" "$GRADLE_FILE"
+          fi
+          VERSION_NAME=$(grep -E 'versionName\s*=' "$GRADLE_FILE" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "previous_code=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "new_code=$NEW_CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "Bumped versionCode: $CURRENT -> $NEW_CODE (versionName=$VERSION_NAME)"
+
+      - name: Commit version bump
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle.kts
+          if git diff --staged --quiet; then
+            echo "No version changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(play): bump versionCode to ${{ steps.bump.outputs.new_code }} [skip ci]"
+          git push
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Generate release notes for APK
+        run: python3 scripts/generate-android-release-notes.py .
+
+      - name: Install Play upload keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          EXPECTED_SHA1: ${{ secrets.ANDROID_UPLOAD_CERT_SHA1 || '9F:16:81:6B:0F:51:AE:3F:92:57:9E:51:9E:62:1A:C7:0A:2F:2D:7D' }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "Error: ANDROID_KEYSTORE_BASE64 is not set."
+            exit 1
+          fi
+          if [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Error: ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD must all be set."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/signing"
+          KEYSTORE_FILE="$RUNNER_TEMP/signing/upload-keystore.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_FILE"
+          echo "KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "EXPECTED_SHA1=$EXPECTED_SHA1" >> "$GITHUB_ENV"
+          norm_sha1() { echo "$1" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]'; }
+          ACTUAL_SHA1=$(keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep -i "SHA1:" | head -1 | sed -E 's/.*SHA1:[[:space:]]*//')
+          if [ "$(norm_sha1 "$ACTUAL_SHA1")" != "$(norm_sha1 "$EXPECTED_SHA1")" ]; then
+            echo "Error: Upload keystore SHA1 ($ACTUAL_SHA1) does not match Play upload key ($EXPECTED_SHA1)."
+            exit 1
+          fi
+      - name: Run unit tests
+        run: ./gradlew test --stacktrace
+
+      - name: Build release APK and AAB
+        run: ./gradlew assembleRelease bundleRelease --stacktrace
+
+      - name: Find APK
+        id: apk
+        run: |
+          APK=$(find . -path "*/build/outputs/apk/release/*.apk" | head -1)
+          if [ -z "$APK" ]; then
+            echo "Error: release APK not found"
+            exit 1
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$APK")" >> "$GITHUB_OUTPUT"
+
+      - name: Find AAB
+        id: aab
+        run: |
+          AAB=$(find . -path "*/build/outputs/bundle/release/*.aab" | head -1)
+          if [ -z "$AAB" ]; then
+            echo "Error: release AAB not found"
+            exit 1
+          fi
+          echo "path=$AAB" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$AAB")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify AAB Play signing certificate
+        run: |
+          set -euo pipefail
+          AAB="${{ steps.aab.outputs.path }}"
+          CERT=$(unzip -Z1 "$AAB" | grep -E '^META-INF/.*\.(RSA|EC)$' | head -1)
+          unzip -p "$AAB" "$CERT" | keytool -printcert | tee /tmp/aab-signing-cert.txt
+          norm_sha1() { echo "$1" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]'; }
+          ACTUAL_SHA1=$(grep -i "SHA1:" /tmp/aab-signing-cert.txt | head -1 | sed -E 's/.*SHA1:[[:space:]]*//')
+          if [ "$(norm_sha1 "$ACTUAL_SHA1")" != "$(norm_sha1 "$EXPECTED_SHA1")" ]; then
+            echo "Error: AAB SHA1 ($ACTUAL_SHA1) does not match Play upload key ($EXPECTED_SHA1)."
+            exit 1
+          fi
+
+      - name: Upload Play release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-release-apk-v${{ steps.bump.outputs.version_name }}-code${{ steps.bump.outputs.new_code }}
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 90
+
+      - name: Upload Play release AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-release-aab-v${{ steps.bump.outputs.version_name }}-code${{ steps.bump.outputs.new_code }}
+          path: ${{ steps.aab.outputs.path }}
+          retention-days: 90
+
+      - name: Publish Play GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: ${{ steps.apk.outputs.path }},${{ steps.aab.outputs.path }}
+          tag: play-v${{ steps.bump.outputs.version_name }}-code${{ steps.bump.outputs.new_code }}
+          name: Play release ${{ steps.bump.outputs.version_name }} (code ${{ steps.bump.outputs.new_code }})
+          token: ${{ secrets.GITHUB_TOKEN }}
+          generateReleaseNotes: true
+          makeLatest: false
+          body: |
+            **Play release**
+            **Version name:** ${{ steps.bump.outputs.version_name }}
+            **Version code:** ${{ steps.bump.outputs.new_code }}
+            **Previous version code:** ${{ steps.bump.outputs.previous_code }}
+
+            Use the **Upload latest AAB to Google Play** workflow to publish this build.
