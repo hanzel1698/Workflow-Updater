@@ -2,6 +2,11 @@ name: Upload latest AAB to Google Play
 
 on:
   workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: 'Run ID of the android-release.yml workflow to download AAB from (optional - uses latest if not specified)'
+        required: false
+        type: string
 
 jobs:
   upload-aab:
@@ -15,18 +20,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find latest .aab file
-        id: find
+      - name: Download AAB from artifact
+        id: download
         run: |
           set -e
-          # Find the latest .aab file from Android build outputs only
-          LATEST_AAB=$(find ./android/app/build/outputs/bundle/release -type f -name '*.aab' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || true)
-          if [[ -z "$LATEST_AAB" ]]; then
-            echo "No .aab files found in android/app/build/outputs/bundle/release"
+          
+          # Determine which run to download from
+          if [[ -n "${{ github.event.inputs.build_run_id }}" ]]; then
+            RUN_ID="${{ github.event.inputs.build_run_id }}"
+            echo "Using specified run ID: $RUN_ID"
+          else
+            # Get the latest successful android-release.yml run
+            echo "Fetching latest successful android-release.yml run..."
+            RUN_ID=$(gh run list \
+              --workflow=android-release.yml \
+              --status=success \
+              --limit=1 \
+              --json=databaseId \
+              --jq='.[0].databaseId')
+            
+            if [[ -z "$RUN_ID" ]]; then
+              echo "No successful android-release.yml runs found"
+              exit 1
+            fi
+            echo "Found latest run ID: $RUN_ID"
+          fi
+          
+          # Download the AAB artifact
+          echo "Downloading AAB artifact from run $RUN_ID..."
+          gh run download "$RUN_ID" \
+            --name='app-release-aab-*' \
+            --dir=./aab-download
+          
+          # Find the downloaded AAB file
+          DOWNLOADED_AAB=$(find ./aab-download -type f -name '*.aab' | head -1)
+          if [[ -z "$DOWNLOADED_AAB" ]]; then
+            echo "Error: No .aab file found in downloaded artifact"
             exit 1
           fi
-          echo "Found AAB: $LATEST_AAB"
-          echo "aab_path=$LATEST_AAB" >> $GITHUB_OUTPUT
+          
+          echo "Downloaded AAB: $DOWNLOADED_AAB"
+          echo "aab_path=$DOWNLOADED_AAB" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create release notes (use latest commit message)
         run: |
@@ -39,6 +75,6 @@ jobs:
         with:
           serviceAccountJson: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: in.rdokk.workflowupdater
-          releaseFiles: ${{ steps.find.outputs.aab_path }}
+          releaseFiles: ${{ steps.download.outputs.aab_path }}
           track: closed
           whatsNewDirectory: release-notes
