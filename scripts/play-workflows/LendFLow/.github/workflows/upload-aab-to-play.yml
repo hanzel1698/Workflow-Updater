@@ -1,0 +1,80 @@
+name: Upload latest AAB to Google Play
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Run ID of a play-version-bump-build.yml workflow (optional - uses latest Play build if not specified)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upload-aab:
+    name: Upload latest AAB
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download AAB from Play build artifact
+        id: download
+        run: |
+          set -e
+          
+          if [[ -n "${{ github.event.inputs.build_run_id }}" ]]; then
+            RUN_ID="${{ github.event.inputs.build_run_id }}"
+            echo "Using specified run ID: $RUN_ID"
+          else
+            echo "Fetching latest successful play-version-bump-build.yml run..."
+            RUN_ID=$(gh run list \
+              --workflow=play-version-bump-build.yml \
+              --status=success \
+              --limit=1 \
+              --json=databaseId \
+              --jq='.[0].databaseId')
+            
+            if [[ -z "$RUN_ID" ]]; then
+              echo "No successful play-version-bump-build.yml runs found."
+              echo "Run 'Bump versionCode and Build for Play' first."
+              exit 1
+            fi
+            echo "Found latest Play build run ID: $RUN_ID"
+          fi
+          
+          echo "Downloading Play AAB artifact from run $RUN_ID..."
+          gh run download "$RUN_ID" \
+            --dir=./aab-download
+          
+          DOWNLOADED_AAB=$(find ./aab-download -type f -name '*.aab' | head -1)
+          if [[ -z "$DOWNLOADED_AAB" ]]; then
+            echo "Error: No .aab file found in downloaded artifact"
+            exit 1
+          fi
+          
+          echo "Downloaded AAB: $DOWNLOADED_AAB"
+          echo "aab_path=$DOWNLOADED_AAB" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release notes (use latest commit message)
+        run: |
+          mkdir -p release-notes
+          git log -1 --pretty=%B > release-notes/whatsnew-en-IN
+          echo "Wrote release-notes/whatsnew-en-IN"
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.example.loantracker
+          releaseFiles: ${{ steps.download.outputs.aab_path }}
+          tracks: internal
+          whatsNewDirectory: release-notes
