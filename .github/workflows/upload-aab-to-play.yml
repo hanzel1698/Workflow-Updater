@@ -20,7 +20,7 @@ jobs:
         run: |
           set -e
           # Find the latest .aab file from Android build outputs only
-          LATEST_AAB=$(find android/app/build/outputs/bundle/release -type f -name '*.aab' -print0 2>/dev/null | xargs -0 ls -1 -t 2>/dev/null | head -n1 || true)
+          LATEST_AAB=$(find ./android/app/build/outputs/bundle/release -type f -name '*.aab' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2- || true)
           if [[ -z "$LATEST_AAB" ]]; then
             echo "No .aab files found in android/app/build/outputs/bundle/release"
             exit 1
