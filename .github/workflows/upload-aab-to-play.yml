@@ -7,10 +7,19 @@ on:
         description: 'Run ID of the android-release.yml workflow to download AAB from (optional - uses latest if not specified)'
         required: false
         type: string
+  workflow_run:
+    workflows: [Android Release Build]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   upload-aab:
     name: Upload latest AAB
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,6 +38,9 @@ jobs:
           if [[ -n "${{ github.event.inputs.build_run_id }}" ]]; then
             RUN_ID="${{ github.event.inputs.build_run_id }}"
             echo "Using specified run ID: $RUN_ID"
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            RUN_ID="${{ github.event.workflow_run.id }}"
+            echo "Using triggering Android Release Build run ID: $RUN_ID"
           else
             # Get the latest successful android-release.yml run
             echo "Fetching latest successful android-release.yml run..."
