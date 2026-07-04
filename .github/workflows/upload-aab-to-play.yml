@@ -1,0 +1,44 @@
+name: Upload latest AAB to Google Play
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upload-aab:
+    name: Upload latest AAB
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find latest .aab file
+        id: find
+        run: |
+          set -e
+          # Find all .aab files (exclude .git), sort by modification time, pick the newest
+          LATEST_AAB=$(find . -type f -name '*.aab' -not -path './.git/*' -print0 | xargs -0 ls -1 -t 2>/dev/null | head -n1 || true)
+          if [[ -z "$LATEST_AAB" ]]; then
+            echo "No .aab files found in the repository"
+            exit 1
+          fi
+          echo "Found AAB: $LATEST_AAB"
+          echo "aab_path=$LATEST_AAB" >> $GITHUB_OUTPUT
+
+      - name: Create release notes (use latest commit message)
+        run: |
+          mkdir -p release-notes
+          git log -1 --pretty=%B > release-notes/whatsnew-en-IN
+          echo "Wrote release-notes/whatsnew-en-IN"
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJson: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: in.rdokk.workflowupdater
+          releaseFiles: ${{ steps.find.outputs.aab_path }}
+          track: closed
+          whatsNewDirectory: release-notes
