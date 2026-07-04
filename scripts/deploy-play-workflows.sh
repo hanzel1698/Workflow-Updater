@@ -39,6 +39,9 @@ deploy_repo() {
   cd "$work_dir"
   git checkout -b "$BRANCH"
 
+  git config user.name "${GIT_USER_NAME:-hanzel1698}"
+  git config user.email "${GIT_USER_EMAIL:-hanzel1698@users.noreply.github.com}"
+
   mkdir -p .github/workflows
   cp "$template_dir/.github/workflows/play-version-bump-build.yml" .github/workflows/
   cp "$template_dir/.github/workflows/upload-aab-to-play.yml" .github/workflows/
