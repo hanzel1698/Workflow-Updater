@@ -4,13 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       build_run_id:
-        description: 'Run ID of the android-release.yml workflow to download AAB from (optional - uses latest if not specified)'
+        description: Run ID of a play-version-bump-build.yml workflow (optional - uses latest Play build if not specified)
         required: false
         type: string
-  workflow_run:
-    workflows: [Android Release Build]
-    types: [completed]
-    branches: [master]
 
 permissions:
   contents: read
@@ -19,7 +15,6 @@ permissions:
 jobs:
   upload-aab:
     name: Upload latest AAB
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,41 +24,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download AAB from artifact
+      - name: Download AAB from Play build artifact
         id: download
         run: |
           set -e
           
-          # Determine which run to download from
           if [[ -n "${{ github.event.inputs.build_run_id }}" ]]; then
             RUN_ID="${{ github.event.inputs.build_run_id }}"
             echo "Using specified run ID: $RUN_ID"
-          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            RUN_ID="${{ github.event.workflow_run.id }}"
-            echo "Using triggering Android Release Build run ID: $RUN_ID"
           else
-            # Get the latest successful android-release.yml run
-            echo "Fetching latest successful android-release.yml run..."
+            echo "Fetching latest successful play-version-bump-build.yml run..."
             RUN_ID=$(gh run list \
-              --workflow=android-release.yml \
+              --workflow=play-version-bump-build.yml \
               --status=success \
               --limit=1 \
               --json=databaseId \
               --jq='.[0].databaseId')
             
             if [[ -z "$RUN_ID" ]]; then
-              echo "No successful android-release.yml runs found"
+              echo "No successful play-version-bump-build.yml runs found."
+              echo "Run 'Bump versionCode and Build for Play' first."
               exit 1
             fi
-            echo "Found latest run ID: $RUN_ID"
+            echo "Found latest Play build run ID: $RUN_ID"
           fi
           
-          # Download the AAB artifact (no --name filter; will download all artifacts)
-          echo "Downloading AAB artifact from run $RUN_ID..."
+          echo "Downloading Play AAB artifact from run $RUN_ID..."
           gh run download "$RUN_ID" \
             --dir=./aab-download
           
-          # Find the downloaded AAB file
           DOWNLOADED_AAB=$(find ./aab-download -type f -name '*.aab' | head -1)
           if [[ -z "$DOWNLOADED_AAB" ]]; then
             echo "Error: No .aab file found in downloaded artifact"
@@ -72,6 +61,7 @@ jobs:
           
           echo "Downloaded AAB: $DOWNLOADED_AAB"
           echo "aab_path=$DOWNLOADED_AAB" >> $GITHUB_OUTPUT
+          echo "source_run_id=$RUN_ID" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

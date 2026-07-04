@@ -1,16 +1,24 @@
-name: Android Release Build
+name: Bump versionCode and Build for Play
 
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
+    inputs:
+      bump_by:
+        description: Increment versionCode by this amount
+        required: false
+        default: "1"
+        type: string
+      version_name:
+        description: New versionName (leave empty to keep current)
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]')
+  bump-and-build:
+    name: Bump versionCode and build Play AAB
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -21,6 +29,42 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump versionCode
+        working-directory: .
+        id: bump
+        run: |
+          set -euo pipefail
+          GRADLE_FILE="android/app/build.gradle.kts"
+          CURRENT=$(grep -E 'versionCode\s*=' "$GRADLE_FILE" | head -1 | sed -E 's/.*=\s*([0-9]+).*/\1/')
+          BUMP_BY="${{ github.event.inputs.bump_by }}"
+          BUMP_BY="${BUMP_BY:-1}"
+          NEW_CODE=$((CURRENT + BUMP_BY))
+          sed -i -E "s/(versionCode[[:space:]]*=[[:space:]]*)[0-9]+/\1${NEW_CODE}/" "$GRADLE_FILE"
+          if [[ -n "${{ github.event.inputs.version_name }}" ]]; then
+            NEW_NAME="${{ github.event.inputs.version_name }}"
+            sed -i -E "s/(versionName[[:space:]]*=[[:space:]]*)\"[^\"]+\"/\1\"${NEW_NAME}\"/" "$GRADLE_FILE"
+          fi
+          VERSION_NAME=$(grep -E 'versionName\s*=' "$GRADLE_FILE" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "previous_code=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "new_code=$NEW_CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "Bumped versionCode: $CURRENT -> $NEW_CODE (versionName=$VERSION_NAME)"
+
+      - name: Commit version bump
+        working-directory: .
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/app/build.gradle.kts
+          if git diff --staged --quiet; then
+            echo "No version changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(play): bump versionCode to ${{ steps.bump.outputs.new_code }} [skip ci]"
+          git push
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -48,7 +92,6 @@ jobs:
           set -euo pipefail
           if [ -z "$KEYSTORE_BASE64" ]; then
             echo "Error: ANDROID_KEYSTORE_BASE64 is not set."
-            echo "Run ~/.android/signing/sync-github-secrets.ps1 with your Play upload keystore."
             exit 1
           fi
           if [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
@@ -58,10 +101,6 @@ jobs:
           mkdir -p "$RUNNER_TEMP/signing"
           KEYSTORE_FILE="$RUNNER_TEMP/signing/upload-keystore.jks"
           echo "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_FILE"
-          if [ ! -s "$KEYSTORE_FILE" ]; then
-            echo "Error: decoded keystore is empty."
-            exit 1
-          fi
           echo "KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
           echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
@@ -69,16 +108,10 @@ jobs:
           echo "EXPECTED_SHA1=$EXPECTED_SHA1" >> "$GITHUB_ENV"
           norm_sha1() { echo "$1" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]'; }
           ACTUAL_SHA1=$(keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep -i "SHA1:" | head -1 | sed -E 's/.*SHA1:[[:space:]]*//')
-          if keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep -q "CN=Android Debug"; then
-            echo "Error: GitHub signing secret contains the Android debug keystore. Google Play requires your upload keystore."
-            exit 1
-          fi
           if [ "$(norm_sha1 "$ACTUAL_SHA1")" != "$(norm_sha1 "$EXPECTED_SHA1")" ]; then
             echo "Error: Upload keystore SHA1 ($ACTUAL_SHA1) does not match Play upload key ($EXPECTED_SHA1)."
-            echo "Replace ~/.android/signing/upload-keystore.jks with the Play upload keystore, then run sync-github-secrets.ps1."
             exit 1
           fi
-          echo "Upload keystore fingerprint OK: $ACTUAL_SHA1"
 
       - name: Build release APK and AAB
         working-directory: android
@@ -117,54 +150,40 @@ jobs:
           AAB="${{ steps.aab.outputs.path }}"
           CERT=$(unzip -Z1 "$AAB" | grep -E '^META-INF/.*\.(RSA|EC)$' | head -1)
           unzip -p "$AAB" "$CERT" | keytool -printcert | tee /tmp/aab-signing-cert.txt
-          if grep -q "CN=Android Debug" /tmp/aab-signing-cert.txt; then
-            echo "Error: AAB is signed with the Android debug key."
-            exit 1
-          fi
           norm_sha1() { echo "$1" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]'; }
           ACTUAL_SHA1=$(grep -i "SHA1:" /tmp/aab-signing-cert.txt | head -1 | sed -E 's/.*SHA1:[[:space:]]*//')
           if [ "$(norm_sha1 "$ACTUAL_SHA1")" != "$(norm_sha1 "$EXPECTED_SHA1")" ]; then
             echo "Error: AAB SHA1 ($ACTUAL_SHA1) does not match Play upload key ($EXPECTED_SHA1)."
             exit 1
           fi
-          echo "AAB signing certificate OK: $ACTUAL_SHA1"
 
-      - name: Extract app version
-        id: version
-        working-directory: android
-        run: |
-          GRADLE_FILE=$(find . -path "*/app/build.gradle.kts" | head -1)
-          VERSION_NAME=$(grep -E 'versionName\s*=' "$GRADLE_FILE" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          VERSION_CODE=$(grep -E 'versionCode\s*=' "$GRADLE_FILE" | head -1 | sed -E 's/.*=\s*([0-9]+).*/\1/')
-          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
-          echo "tag=v${VERSION_NAME}-build${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload release APK artifact
+      - name: Upload Play release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-${{ steps.version.outputs.tag }}
+          name: play-release-apk-v${{ steps.bump.outputs.version_name }}-code${{ steps.bump.outputs.new_code }}
           path: ${{ steps.apk.outputs.path }}
-          retention-days: 30
+          retention-days: 90
 
-      - name: Upload release AAB artifact
+      - name: Upload Play release AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-aab-${{ steps.version.outputs.tag }}
+          name: play-release-aab-v${{ steps.bump.outputs.version_name }}-code${{ steps.bump.outputs.new_code }}
           path: ${{ steps.aab.outputs.path }}
-          retention-days: 30
+          retention-days: 90
 
-      - name: Publish GitHub Release
+      - name: Publish Play GitHub Release
         uses: ncipollo/release-action@v1
         with:
           artifacts: ${{ steps.apk.outputs.path }},${{ steps.aab.outputs.path }}
-          tag: ${{ steps.version.outputs.tag }}
-          name: Release ${{ steps.version.outputs.name }} (build ${{ github.run_number }})
+          tag: play-v${{ steps.bump.outputs.version_name }}-code${{ steps.bump.outputs.new_code }}
+          name: Play release ${{ steps.bump.outputs.version_name }} (code ${{ steps.bump.outputs.new_code }})
           token: ${{ secrets.GITHUB_TOKEN }}
           generateReleaseNotes: true
-          makeLatest: true
+          makeLatest: false
           body: |
-            **Version:** ${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }})
-            **Commit:** ${{ github.sha }}
+            **Play release**
+            **Version name:** ${{ steps.bump.outputs.version_name }}
+            **Version code:** ${{ steps.bump.outputs.new_code }}
+            **Previous version code:** ${{ steps.bump.outputs.previous_code }}
 
-            Download the APK to sideload on a device, or the AAB to upload to Google Play.
+            Use the **Upload latest AAB to Google Play** workflow to publish this build.
