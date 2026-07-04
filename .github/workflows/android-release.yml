@@ -110,6 +110,7 @@ jobs:
           echo "name=$(basename "$AAB")" >> "$GITHUB_OUTPUT"
 
       - name: Verify AAB Play signing certificate
+        working-directory: .
         run: |
           set -euo pipefail
           AAB="${{ steps.aab.outputs.path }}"
