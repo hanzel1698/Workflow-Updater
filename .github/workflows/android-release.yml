@@ -55,12 +55,13 @@ jobs:
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/signing"
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing/upload-keystore.jks"
-          if [ ! -s "$RUNNER_TEMP/signing/upload-keystore.jks" ]; then
+          KEYSTORE_FILE="$RUNNER_TEMP/signing/upload-keystore.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_FILE"
+          if [ ! -s "$KEYSTORE_FILE" ]; then
             echo "Error: decoded keystore is empty."
             exit 1
           fi
-          echo "KEYSTORE_FILE=$RUNNER_TEMP/signing/upload-keystore.jks" >> "$GITHUB_ENV"
+          echo "KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
           echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
           echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
