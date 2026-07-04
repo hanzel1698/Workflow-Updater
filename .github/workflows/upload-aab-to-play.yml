@@ -46,10 +46,9 @@ jobs:
             echo "Found latest run ID: $RUN_ID"
           fi
           
-          # Download the AAB artifact
+          # Download the AAB artifact (no --name filter; will download all artifacts)
           echo "Downloading AAB artifact from run $RUN_ID..."
           gh run download "$RUN_ID" \
-            --name='app-release-aab-*' \
             --dir=./aab-download
           
           # Find the downloaded AAB file
