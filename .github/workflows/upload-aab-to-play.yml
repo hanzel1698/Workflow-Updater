@@ -87,5 +87,5 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: in.rdokk.workflowupdater
           releaseFiles: ${{ steps.download.outputs.aab_path }}
-          track: closed
+          tracks: RDO KKD WORKFLOW
           whatsNewDirectory: release-notes
