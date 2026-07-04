@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   build:
@@ -168,14 +167,3 @@ jobs:
             **Commit:** ${{ github.sha }}
 
             Download the APK to sideload on a device, or the AAB to upload to Google Play.
-
-  upload-to-play:
-    name: Trigger Google Play upload
-    needs: build
-    if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger upload workflow
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run upload-aab-to-play.yml --ref master -f build_run_id=${{ github.run_id }}
