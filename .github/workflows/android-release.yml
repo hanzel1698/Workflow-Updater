@@ -59,9 +59,9 @@ jobs:
           echo "KEY_ALIAS=${KEY_ALIAS:-androiddebugkey}" >> "$GITHUB_ENV"
           echo "KEY_PASSWORD=${KEY_PASSWORD:-android}" >> "$GITHUB_ENV"
 
-      - name: Build release APK
+      - name: Build release APK and AAB
         working-directory: android
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease bundleRelease --stacktrace
 
       - name: Find APK
         id: apk
@@ -75,6 +75,19 @@ jobs:
           APK=${APK#./}
           echo "path=android/$APK" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$APK")" >> "$GITHUB_OUTPUT"
+
+      - name: Find AAB
+        id: aab
+        working-directory: android
+        run: |
+          AAB=$(find . -path "*/build/outputs/bundle/release/*.aab" | head -1)
+          if [ -z "$AAB" ]; then
+            echo "Error: release AAB not found"
+            exit 1
+          fi
+          AAB=${AAB#./}
+          echo "path=android/$AAB" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$AAB")" >> "$GITHUB_OUTPUT"
 
       - name: Extract app version
         id: version
@@ -94,10 +107,17 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
+      - name: Upload release AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab-${{ steps.version.outputs.tag }}
+          path: ${{ steps.aab.outputs.path }}
+          retention-days: 30
+
       - name: Publish GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: ${{ steps.apk.outputs.path }}
+          artifacts: ${{ steps.apk.outputs.path }},${{ steps.aab.outputs.path }}
           tag: ${{ steps.version.outputs.tag }}
           name: Release ${{ steps.version.outputs.name }} (build ${{ github.run_number }})
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -107,4 +127,4 @@ jobs:
             **Version:** ${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }})
             **Commit:** ${{ github.sha }}
 
-            Download the APK below to install or update on your device.
+            Download the APK to sideload on a device, or the AAB to upload to Google Play.
