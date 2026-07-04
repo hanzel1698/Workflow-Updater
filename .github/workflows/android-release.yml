@@ -36,16 +36,22 @@ jobs:
         working-directory: .
         run: python3 scripts/generate-android-release-notes.py android
 
-      - name: Install shared upload keystore
+      - name: Install Play upload keystore
         env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 || secrets.DEBUG_KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          EXPECTED_SHA1: ${{ secrets.ANDROID_UPLOAD_CERT_SHA1 || '9F:16:81:6B:0F:51:AE:3F:92:57:9E:51:9E:62:1A:C7:0A:2F:2D:7D' }}
         run: |
+          set -euo pipefail
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "Error: ANDROID_KEYSTORE_BASE64 (or DEBUG_KEYSTORE_BASE64) is not set."
-            echo "Run ~/.android/signing/sync-github-secrets.ps1 on your laptop."
+            echo "Error: ANDROID_KEYSTORE_BASE64 is not set."
+            echo "Run ~/.android/signing/sync-github-secrets.ps1 with your Play upload keystore."
+            exit 1
+          fi
+          if [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Error: ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD must all be set."
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/signing"
@@ -55,9 +61,22 @@ jobs:
             exit 1
           fi
           echo "KEYSTORE_FILE=$RUNNER_TEMP/signing/upload-keystore.jks" >> "$GITHUB_ENV"
-          echo "KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD:-android}" >> "$GITHUB_ENV"
-          echo "KEY_ALIAS=${KEY_ALIAS:-androiddebugkey}" >> "$GITHUB_ENV"
-          echo "KEY_PASSWORD=${KEY_PASSWORD:-android}" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "EXPECTED_SHA1=$EXPECTED_SHA1" >> "$GITHUB_ENV"
+          norm_sha1() { echo "$1" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]'; }
+          ACTUAL_SHA1=$(keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep -i "SHA1:" | head -1 | sed -E 's/.*SHA1:[[:space:]]*//')
+          if keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep -q "CN=Android Debug"; then
+            echo "Error: GitHub signing secret contains the Android debug keystore. Google Play requires your upload keystore."
+            exit 1
+          fi
+          if [ "$(norm_sha1 "$ACTUAL_SHA1")" != "$(norm_sha1 "$EXPECTED_SHA1")" ]; then
+            echo "Error: Upload keystore SHA1 ($ACTUAL_SHA1) does not match Play upload key ($EXPECTED_SHA1)."
+            echo "Replace ~/.android/signing/upload-keystore.jks with the Play upload keystore, then run sync-github-secrets.ps1."
+            exit 1
+          fi
+          echo "Upload keystore fingerprint OK: $ACTUAL_SHA1"
 
       - name: Build release APK and AAB
         working-directory: android
@@ -88,6 +107,24 @@ jobs:
           AAB=${AAB#./}
           echo "path=android/$AAB" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$AAB")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify AAB Play signing certificate
+        run: |
+          set -euo pipefail
+          AAB="${{ steps.aab.outputs.path }}"
+          CERT=$(unzip -Z1 "$AAB" | grep -E '^META-INF/.*\.(RSA|EC)$' | head -1)
+          unzip -p "$AAB" "$CERT" | keytool -printcert | tee /tmp/aab-signing-cert.txt
+          if grep -q "CN=Android Debug" /tmp/aab-signing-cert.txt; then
+            echo "Error: AAB is signed with the Android debug key."
+            exit 1
+          fi
+          norm_sha1() { echo "$1" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]'; }
+          ACTUAL_SHA1=$(grep -i "SHA1:" /tmp/aab-signing-cert.txt | head -1 | sed -E 's/.*SHA1:[[:space:]]*//')
+          if [ "$(norm_sha1 "$ACTUAL_SHA1")" != "$(norm_sha1 "$EXPECTED_SHA1")" ]; then
+            echo "Error: AAB SHA1 ($ACTUAL_SHA1) does not match Play upload key ($EXPECTED_SHA1)."
+            exit 1
+          fi
+          echo "AAB signing certificate OK: $ACTUAL_SHA1"
 
       - name: Extract app version
         id: version
