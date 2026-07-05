@@ -43,9 +43,15 @@ sync_play_json() {
   echo "Syncing GOOGLE_PLAY_SERVICE_ACCOUNT_JSON to all Android repos..."
   for repo in "${ANDROID_REPOS[@]}"; do
     echo "  -> $repo"
-    gh secret set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON \
-      --repo "$OWNER/$repo" \
-      --body-file "$json_file"
+    if gh secret set --help 2>&1 | grep -q body-file; then
+      gh secret set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON \
+        --repo "$OWNER/$repo" \
+        --body-file "$json_file"
+    else
+      gh secret set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON \
+        --repo "$OWNER/$repo" \
+        < "$json_file"
+    fi
   done
   echo "Done."
 }
