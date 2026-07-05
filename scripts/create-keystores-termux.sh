@@ -3,7 +3,7 @@
 # Skips Workflow-Updater (keep your existing laptop keystore for that app).
 #
 # Usage:
-#   pkg install openjdk-17 gh openssl
+#   pkg install openjdk-17 gh
 #   gh auth login
 #   cd ~/Workflow-Updater && git pull
 #   ./scripts/create-keystores-termux.sh
@@ -51,7 +51,7 @@ EOF
 
 require_tools() {
   local missing=0
-  for tool in keytool gh openssl; do
+  for tool in keytool gh; do
     if ! command -v "$tool" >/dev/null; then
       echo "Missing: $tool"
       missing=1
@@ -60,7 +60,7 @@ require_tools() {
   if [[ "$missing" -eq 1 ]]; then
     echo ""
     echo "On Termux, run:"
-    echo "  pkg update && pkg install openjdk-17 gh openssl"
+    echo "  pkg update && pkg install openjdk-17 gh"
     exit 1
   fi
   gh auth status >/dev/null 2>&1 || {
@@ -70,7 +70,11 @@ require_tools() {
 }
 
 random_password() {
-  openssl rand -base64 24 | tr -d '/+=' | head -c 24
+  if command -v openssl >/dev/null; then
+    openssl rand -base64 24 | tr -d '/+=' | head -c 24
+  else
+    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24
+  fi
 }
 
 create_keystore() {
