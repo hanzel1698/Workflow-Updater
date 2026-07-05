@@ -3,15 +3,13 @@
 # Skips Workflow-Updater (keep your existing laptop keystore for that app).
 #
 # Usage:
-#   pkg install openjdk-17 gh
+#   pkg install openjdk-17 gh bash
 #   gh auth login
 #   cd ~/Workflow-Updater && git pull
-#   ./scripts/create-keystores-termux.sh
+#   bash ./scripts/create-keystores-termux.sh
 #
 # Optional: use one password for all new keystores
-#   KEYSTORE_PASSWORD='your-secure-password' ./scripts/create-keystores-termux.sh
-#
-# NEVER commit keystores or ~/.android/signing/ to git.
+#   KEYSTORE_PASSWORD='your-secure-password' bash ./scripts/create-keystores-termux.sh
 
 set -euo pipefail
 
@@ -21,12 +19,11 @@ CREDS_FILE="$SIGNING_DIR/keystore-credentials.txt"
 ALIAS="upload"
 VALIDITY_DAYS=10000
 
-# repo_slug|display_name|dname_CN
-APPS=(
-  "Expense_Tracker|Expense Tracker|Expense Tracker"
-  "LendFLow|LendFLow|LendFLow"
-  "dress-inventory|Dress Inventory|Dress Inventory"
-)
+trap 'echo ""; echo "ERROR: script failed at line $LINENO. Re-run with: bash ./scripts/create-keystores-termux.sh"; exit 1' ERR
+
+tolower() {
+  echo "$1" | tr '[:upper:]' '[:lower:]'
+}
 
 warn_play_console() {
   cat <<'EOF'
@@ -60,7 +57,7 @@ require_tools() {
   if [[ "$missing" -eq 1 ]]; then
     echo ""
     echo "On Termux, run:"
-    echo "  pkg update && pkg install openjdk-17 gh"
+    echo "  pkg update && pkg install openjdk-17 gh bash"
     exit 1
   fi
   gh auth status >/dev/null 2>&1 || {
@@ -70,11 +67,20 @@ require_tools() {
 }
 
 random_password() {
-  if command -v openssl >/dev/null; then
-    openssl rand -base64 24 | tr -d '/+=' | head -c 24
-  else
-    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24
+  # Avoid `tr | head` under pipefail (SIGPIPE exits the script on Termux).
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 12
+    return
   fi
+  if command -v python >/dev/null 2>&1; then
+    python -c "import secrets; print(secrets.token_hex(12))"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c "import secrets; print(secrets.token_hex(12))"
+    return
+  fi
+  echo "Key$(date +%s)${RANDOM}${RANDOM}"
 }
 
 create_keystore() {
@@ -87,14 +93,19 @@ create_keystore() {
   local keystore="$dir/upload-keystore.jks"
   local password="${KEYSTORE_PASSWORD:-}"
 
+  echo ""
+  echo "=== $display ($repo) ==="
+
   mkdir -p "$dir"
   chmod 700 "$SIGNING_DIR" "$dir"
 
   if [[ -f "$keystore" ]]; then
-    echo ""
     echo "Keystore already exists: $keystore"
-    read -r -p "Overwrite? [y/N] " ans
-    [[ "${ans,,}" == "y" ]] || { echo "Skipped $repo"; return 0; }
+    read -r -p "Overwrite? [y/N] " ans || true
+    if [[ "$(tolower "$ans")" != "y" ]]; then
+      echo "Skipped $repo"
+      return 0
+    fi
     rm -f "$keystore"
   fi
 
@@ -102,8 +113,7 @@ create_keystore() {
     password="$(random_password)"
   fi
 
-  echo ""
-  echo "Creating keystore for $display ($repo)..."
+  echo "Creating keystore..."
   keytool -genkeypair -v \
     -keystore "$keystore" \
     -alias "$ALIAS" \
@@ -130,7 +140,7 @@ create_keystore() {
     echo "storepass=$password"
     echo "keypass=$password"
     echo "sha1=$sha1"
-    echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
     echo ""
   } >> "$CREDS_FILE"
 
@@ -140,8 +150,11 @@ create_keystore() {
 
 main() {
   warn_play_console
-  read -r -p "Continue creating NEW keystores for 3 apps? [y/N] " confirm
-  [[ "${confirm,,}" == "y" ]] || { echo "Cancelled."; exit 0; }
+  read -r -p "Continue creating NEW keystores for 3 apps? [y/N] " confirm || true
+  if [[ "$(tolower "$confirm")" != "y" ]]; then
+    echo "Cancelled."
+    exit 0
+  fi
 
   require_tools
   mkdir -p "$SIGNING_DIR"
@@ -155,11 +168,11 @@ main() {
 
   echo "Credentials will be saved to: $CREDS_FILE"
   echo "Back up this file somewhere safe (not GitHub)."
+  echo ""
 
-  for entry in "${APPS[@]}"; do
-    IFS='|' read -r repo display cn <<< "$entry"
-    create_keystore "$repo" "$display" "$cn"
-  done
+  create_keystore "Expense_Tracker" "Expense Tracker" "Expense Tracker"
+  create_keystore "LendFLow" "LendFLow" "LendFLow"
+  create_keystore "dress-inventory" "Dress Inventory" "Dress Inventory"
 
   cat <<EOF
 
