@@ -33,6 +33,7 @@ fun FilterSheet(
   sheetState: SheetState,
   districtOptions: List<String>,
   lacOptions: List<String>,
+  seOptions: List<String>,
   asStatusOptions: List<String>,
   arStatusOptions: List<String>,
   srStatusOptions: List<String>,
@@ -42,6 +43,7 @@ fun FilterSheet(
 ) {
   var district by remember(filters) { mutableStateOf(filters.district) }
   var lac by remember(filters) { mutableStateOf(filters.lac) }
+  var se by remember(filters) { mutableStateOf(filters.se) }
   var asStatus by remember(filters) { mutableStateOf(filters.asStatus) }
   var arStatus by remember(filters) { mutableStateOf(filters.arStatus) }
   var srStatus by remember(filters) { mutableStateOf(filters.srStatus) }
@@ -65,6 +67,10 @@ fun FilterSheet(
         FilterGroup("LAC", lacOptions, lac) { lac = if (lac == it) null else it }
         Spacer(Modifier.height(16.dp))
       }
+      if (seOptions.isNotEmpty()) {
+        FilterGroup("SE", seOptions, se) { se = if (se == it) null else it }
+        Spacer(Modifier.height(16.dp))
+      }
       if (asStatusOptions.isNotEmpty()) {
         FilterGroup("AS Status", asStatusOptions, asStatus) { asStatus = if (asStatus == it) null else it }
         Spacer(Modifier.height(16.dp))
@@ -86,6 +92,7 @@ fun FilterSheet(
           onClick = {
             district = null
             lac = null
+            se = null
             asStatus = null
             arStatus = null
             srStatus = null
@@ -95,7 +102,7 @@ fun FilterSheet(
         }
         Button(
           onClick = {
-            onApply(WorkFilters(district = district, lac = lac, asStatus = asStatus, arStatus = arStatus, srStatus = srStatus))
+            onApply(WorkFilters(district = district, lac = lac, se = se, asStatus = asStatus, arStatus = arStatus, srStatus = srStatus))
             onDismiss()
           }
         ) {
