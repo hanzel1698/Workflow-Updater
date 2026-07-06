@@ -180,6 +180,7 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
       sheetState = filterSheetState,
       districtOptions = state.districtOptions,
       lacOptions = state.lacOptions,
+      seOptions = state.seOptions,
       asStatusOptions = state.asStatusOptions,
       arStatusOptions = state.arStatusOptions,
       srStatusOptions = state.srStatusOptions,
@@ -222,7 +223,7 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
 }
 
 private fun countActiveDropdownFilters(filters: WorkFilters): Int =
-  listOf(filters.district, filters.lac, filters.asStatus, filters.arStatus, filters.srStatus).count { it != null }
+  listOf(filters.district, filters.lac, filters.se, filters.asStatus, filters.arStatus, filters.srStatus).count { it != null }
 
 private fun exportPdf(
   context: android.content.Context,

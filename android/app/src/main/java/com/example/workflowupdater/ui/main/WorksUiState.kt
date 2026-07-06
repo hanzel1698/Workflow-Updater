@@ -8,13 +8,14 @@ import com.example.workflowupdater.data.WorkItem
 data class WorkFilters(
   val district: String? = null,
   val lac: String? = null,
+  val se: String? = null,
   val asStatus: String? = null,
   val arStatus: String? = null,
   val srStatus: String? = null,
   val statusCode: String? = null,
 ) {
   val hasDropdownFilters: Boolean
-    get() = district != null || lac != null || asStatus != null || arStatus != null || srStatus != null
+    get() = district != null || lac != null || se != null || asStatus != null || arStatus != null || srStatus != null
 }
 
 data class WorksUiState(
@@ -28,6 +29,7 @@ data class WorksUiState(
   val filters: WorkFilters = WorkFilters(),
   val districtOptions: List<String> = emptyList(),
   val lacOptions: List<String> = emptyList(),
+  val seOptions: List<String> = emptyList(),
   val asStatusOptions: List<String> = emptyList(),
   val arStatusOptions: List<String> = emptyList(),
   val srStatusOptions: List<String> = emptyList(),
@@ -55,6 +57,7 @@ fun WorksUiState.recomputeDerived(): WorksUiState {
   fun filterWorks(
     district: String? = filters.district,
     lac: String? = filters.lac,
+    se: String? = filters.se,
     asStatus: String? = filters.asStatus,
     arStatus: String? = filters.arStatus,
     srStatus: String? = filters.srStatus,
@@ -64,6 +67,7 @@ fun WorksUiState.recomputeDerived(): WorksUiState {
       work.matchesSearch() &&
         (district == null || work.district == district) &&
         (lac == null || work.lac == lac) &&
+        (se == null || work.se == se) &&
         (asStatus == null || work.asStatus == asStatus) &&
         (arStatus == null || work.arStatus == arStatus) &&
         (srStatus == null || work.srStatus == srStatus) &&
@@ -75,6 +79,7 @@ fun WorksUiState.recomputeDerived(): WorksUiState {
 
   val districtOptions = distinctOptions(filterWorks(district = null)) { it.district }
   val lacOptions = distinctOptions(filterWorks(lac = null)) { it.lac }
+  val seOptions = distinctOptions(filterWorks(se = null)) { it.se }
   val asStatusOptions = distinctOptions(filterWorks(asStatus = null)) { it.asStatus }
   val arStatusOptions = distinctOptions(filterWorks(arStatus = null)) { it.arStatus }
   val srStatusOptions = distinctOptions(filterWorks(srStatus = null)) { it.srStatus }
@@ -83,6 +88,7 @@ fun WorksUiState.recomputeDerived(): WorksUiState {
     filters.copy(
       district = filters.district?.takeIf { it in districtOptions },
       lac = filters.lac?.takeIf { it in lacOptions },
+      se = filters.se?.takeIf { it in seOptions },
       asStatus = filters.asStatus?.takeIf { it in asStatusOptions },
       arStatus = filters.arStatus?.takeIf { it in arStatusOptions },
       srStatus = filters.srStatus?.takeIf { it in srStatusOptions },
@@ -93,6 +99,7 @@ fun WorksUiState.recomputeDerived(): WorksUiState {
       work.matchesSearch() &&
         (sanitizedFilters.district == null || work.district == sanitizedFilters.district) &&
         (sanitizedFilters.lac == null || work.lac == sanitizedFilters.lac) &&
+        (sanitizedFilters.se == null || work.se == sanitizedFilters.se) &&
         (sanitizedFilters.asStatus == null || work.asStatus == sanitizedFilters.asStatus) &&
         (sanitizedFilters.arStatus == null || work.arStatus == sanitizedFilters.arStatus) &&
         (sanitizedFilters.srStatus == null || work.srStatus == sanitizedFilters.srStatus) &&
@@ -104,6 +111,7 @@ fun WorksUiState.recomputeDerived(): WorksUiState {
       work.matchesSearch() &&
         (sanitizedFilters.district == null || work.district == sanitizedFilters.district) &&
         (sanitizedFilters.lac == null || work.lac == sanitizedFilters.lac) &&
+        (sanitizedFilters.se == null || work.se == sanitizedFilters.se) &&
         (sanitizedFilters.asStatus == null || work.asStatus == sanitizedFilters.asStatus) &&
         (sanitizedFilters.arStatus == null || work.arStatus == sanitizedFilters.arStatus) &&
         (sanitizedFilters.srStatus == null || work.srStatus == sanitizedFilters.srStatus)
@@ -114,6 +122,7 @@ fun WorksUiState.recomputeDerived(): WorksUiState {
     filteredWorks = filtered,
     districtOptions = districtOptions,
     lacOptions = lacOptions,
+    seOptions = seOptions,
     asStatusOptions = asStatusOptions,
     arStatusOptions = arStatusOptions,
     srStatusOptions = srStatusOptions,

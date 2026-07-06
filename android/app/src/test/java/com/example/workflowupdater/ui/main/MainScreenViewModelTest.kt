@@ -45,10 +45,22 @@ class WorkflowLogicTest {
     val state = WorksUiState(isLoading = false, allWorks = works).recomputeDerived()
 
     assert(state.districtOptions.isNotEmpty())
+    assert(state.seOptions.isNotEmpty())
+    assert(state.seOptions.all { option -> works.any { it.se == option } })
     assert(state.asStatusOptions.isNotEmpty())
     assert(state.asStatusOptions.all { option -> works.any { it.asStatus == option } })
     assert(state.arStatusOptions.all { option -> works.any { it.arStatus == option } })
     assert(state.srStatusOptions.all { option -> works.any { it.srStatus == option } })
+  }
+
+  @Test
+  fun recomputeDerived_filtersBySe() {
+    val works = SheetConfig.MOCK_ROWS.map(WorkItem::fromRow)
+    val base = WorksUiState(isLoading = false, allWorks = works)
+
+    val bySe = base.copy(filters = WorkFilters(se = "DD")).recomputeDerived()
+    assertEquals(1, bySe.filteredWorks.size)
+    assertEquals("DD", bySe.filteredWorks.first().se)
   }
 
   @Test
