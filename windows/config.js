@@ -3,6 +3,29 @@
  */
 
 window.CONFIG = {
+  // --- Firebase Google Sign-In (see login.html for setup steps) ---
+  AUTH: {
+    // Set false only for local UI work without Firebase configured
+    REQUIRE_AUTH: true,
+
+    // Only these Google accounts may open the dashboard (case-insensitive).
+    // Profile emails in PROFILES below are also allowed automatically.
+    ALLOWED_EMAILS: [
+      "ad.rdokk@gmail.com"
+      // "teammate@example.com",
+    ],
+
+    // Firebase web app config (Firebase Console → Project settings → Your apps → Web)
+    FIREBASE: {
+      apiKey: "",
+      authDomain: "",
+      projectId: "",
+      storageBucket: "",
+      messagingSenderId: "",
+      appId: ""
+    }
+  },
+
   // Web App URL from your standalone Apps Script deployment (Deploy > New deployment > Web app)
   // Example: "https://script.google.com/macros/s/AKfycbz..._abc123/exec"
   SCRIPT_URL: "https://script.google.com/macros/s/AKfycbypzZxZAa0BdbsjA7hYXt02HStBrcwFsTLokgj_m9lHJfRuMGxRNOYZg8f1fstV2Fu5/exec",

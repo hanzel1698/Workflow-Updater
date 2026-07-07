@@ -28,7 +28,7 @@ if __name__ == "__main__":
     
     # Wait half a second for server initialization before opening browser
     time.sleep(0.5)
-    webbrowser.open(f"http://localhost:{PORT}")
+    webbrowser.open(f"http://localhost:{PORT}/login.html")
     
     print("====================================================")
     print("      Workflow Updater Standalone Desktop App       ")

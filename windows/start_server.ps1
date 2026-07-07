@@ -2,7 +2,7 @@
 # Spin up a lightweight local HTTP server and launch the browser to bypass local file scheme CORS restrictions.
 
 $HostPort = 8000
-$Url = "http://localhost:$HostPort"
+$Url = "http://localhost:$HostPort/login.html"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 

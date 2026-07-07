@@ -5,9 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Workflow Updater - RDO KKD Dashboard</title>
   <meta name="description" content="A gorgeous, lightweight, and highly responsive custom UI dashboard for tracking RDO KKD works assigned to engineer AD.">
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=18">
 </head>
-<body>
+<body class="auth-pending">
+
+  <div id="auth-loading" class="auth-loading-overlay" aria-live="polite" aria-busy="true">
+    <div class="auth-loading-card">
+      <div class="auth-spinner" aria-hidden="true"></div>
+      <p>Verifying your access...</p>
+    </div>
+  </div>
 
   <div class="app-container">
     
@@ -19,6 +26,14 @@
       </div>
       
       <div class="controls-panel">
+        <div class="auth-user-chip" id="auth-user-chip" hidden title="Signed-in Google account">
+          <div class="auth-user-avatar" id="auth-user-avatar" aria-hidden="true">?</div>
+          <span class="auth-user-label" id="auth-user-label">Signed in</span>
+          <button type="button" id="auth-sign-out-btn" class="auth-sign-out-btn" title="Sign out">
+            Sign out
+          </button>
+        </div>
+
         <!-- Simulation Mode Status Toggle -->
         <button id="simulation-toggle-btn" class="toggle-simulation-btn active" title="Toggles between Mock Data and Live Google Sheet integration.">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -637,7 +652,10 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- Load JavaScript Files -->
-  <script src="config.js?v=16"></script>
-  <script src="app.js?v=16"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js"></script>
+  <script src="config.js?v=17"></script>
+  <script src="auth.js?v=1"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>
