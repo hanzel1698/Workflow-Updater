@@ -17,6 +17,18 @@ class ProfilePrefs(context: Context) {
   val isDefaultProfileSetupComplete: Boolean
     get() = prefs.getBoolean(KEY_DEFAULT_PROFILE_SETUP_COMPLETE, false)
 
+  /** Persisted design-status filter chip order (two-digit codes). */
+  var statusChipOrder: List<String>
+    get() {
+      val raw = prefs.getString(KEY_STATUS_CHIP_ORDER, null)
+      val saved = raw?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
+      return StatusChipOrder.normalize(saved)
+    }
+    set(value) {
+      val normalized = StatusChipOrder.normalize(value)
+      prefs.edit().putString(KEY_STATUS_CHIP_ORDER, normalized.joinToString(",")).apply()
+    }
+
   /** Profile id used when the app opens after setup (default engineer or All). */
   fun launchProfileId(): String =
     if (isDefaultProfileSetupComplete) defaultProfileId else activeProfileId
@@ -38,5 +50,6 @@ class ProfilePrefs(context: Context) {
     private const val KEY_ACTIVE_PROFILE = "active_profile_id"
     private const val KEY_DEFAULT_PROFILE = "default_profile_id"
     private const val KEY_DEFAULT_PROFILE_SETUP_COMPLETE = "default_profile_setup_complete"
+    private const val KEY_STATUS_CHIP_ORDER = "status_chip_order"
   }
 }

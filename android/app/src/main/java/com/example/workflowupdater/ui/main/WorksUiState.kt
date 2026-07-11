@@ -34,6 +34,8 @@ data class WorksUiState(
   val arStatusOptions: List<String> = emptyList(),
   val srStatusOptions: List<String> = emptyList(),
   val statusCounts: Map<String, Int> = emptyMap(),
+  /** Persisted display order for design-status filter chips (two-digit codes, 01…09). */
+  val statusChipOrder: List<String> = SheetConfig.STATUS_SHORT_LABELS.keys.toList(),
   val isOffline: Boolean = false,
   val errorMessage: String? = null,
   val lastSyncedAtMillis: Long? = null,

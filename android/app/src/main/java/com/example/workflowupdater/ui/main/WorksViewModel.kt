@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.workflowupdater.data.EngineerProfile
 import com.example.workflowupdater.data.ProfilePrefs
 import com.example.workflowupdater.data.SheetConfig
+import com.example.workflowupdater.data.StatusChipOrder
 import com.example.workflowupdater.data.WorkflowRepository
 import com.example.workflowupdater.pdf.PdfReportBuilder
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,7 @@ class WorksViewModel(private val repository: WorkflowRepository, private val pro
       WorksUiState(
         activeProfile = SheetConfig.profileById(profilePrefs.launchProfileId()),
         defaultProfileId = profilePrefs.defaultProfileId,
+        statusChipOrder = profilePrefs.statusChipOrder,
       ),
     )
   val uiState: StateFlow<WorksUiState> = _uiState.asStateFlow()
@@ -106,6 +108,14 @@ class WorksViewModel(private val repository: WorkflowRepository, private val pro
       val newCode = if (it.filters.statusCode == code) null else code
       it.copy(filters = it.filters.copy(statusCode = newCode)).recomputeDerived()
     }
+  }
+
+  /** Persists a new design-status chip order after the user long-presses and reorders chips. */
+  fun onStatusChipOrderChange(order: List<String>) {
+    val normalized = StatusChipOrder.normalize(order)
+    if (normalized == _uiState.value.statusChipOrder) return
+    profilePrefs.statusChipOrder = normalized
+    _uiState.update { it.copy(statusChipOrder = normalized) }
   }
 
   fun applyFilters(filters: WorkFilters) {
