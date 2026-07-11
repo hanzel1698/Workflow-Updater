@@ -1,17 +1,22 @@
 package com.example.workflowupdater.ui.main
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterAltOff
@@ -19,51 +24,121 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.workflowupdater.data.SheetConfig
+import com.example.workflowupdater.data.StatusChipOrder
 import com.example.workflowupdater.ui.common.statusTone
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
-/** Horizontally scrollable KPI chips, mirroring the stats grid on the desktop dashboard.
- *  Tapping a chip toggles it as the active status filter. Only statuses present in the
- *  current filtered pool are shown. */
+/**
+ * Horizontally scrollable KPI chips, mirroring the stats grid on the desktop dashboard.
+ * Tapping a chip toggles it as the active status filter. Long-press and drag to reorder
+ * status chips; the custom order is persisted. Only statuses present in the current
+ * filtered pool are shown. The "All works" chip stays fixed at the start.
+ */
 @Composable
 fun StatChipsRow(
   statusCounts: Map<String, Int>,
+  statusOrder: List<String>,
   selectedCode: String?,
   onChipClick: (String?) -> Unit,
+  onStatusOrderChange: (List<String>) -> Unit,
   hasAnyFilter: Boolean,
   onClearAllFilters: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val total = statusCounts.values.sum()
-  val visibleStatusCodes =
-    SheetConfig.STATUS_SHORT_LABELS.keys.filter { (statusCounts[it] ?: 0) > 0 }
+  val haptic = LocalHapticFeedback.current
+
+  val orderedVisible =
+    remember(statusOrder, statusCounts) {
+      StatusChipOrder.normalize(statusOrder).filter { (statusCounts[it] ?: 0) > 0 }
+    }
+
+  var visibleOrder by remember { mutableStateOf(orderedVisible) }
+  LaunchedEffect(orderedVisible) { visibleOrder = orderedVisible }
+
+  // "All works" is a non-reorderable header item at index 0 when present.
+  val headerCount = if (total > 0) 1 else 0
+
+  val lazyListState = rememberLazyListState()
+  val reorderableLazyListState =
+    rememberReorderableLazyListState(lazyListState) { from, to ->
+      val fromVisible = from.index - headerCount
+      val toVisible = to.index - headerCount
+      if (fromVisible !in visibleOrder.indices || toVisible !in visibleOrder.indices) return@rememberReorderableLazyListState
+      visibleOrder = StatusChipOrder.move(visibleOrder, fromVisible, toVisible)
+      haptic.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+    }
 
   Row(
     modifier = modifier.fillMaxWidth().padding(end = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    Row(
-      modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(start = 16.dp),
+    LazyRow(
+      state = lazyListState,
+      modifier = Modifier.weight(1f),
+      contentPadding = PaddingValues(start = 16.dp, end = 8.dp),
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       if (total > 0) {
-        StatChip(label = "All works", count = total, selected = selectedCode == null, onClick = { onChipClick(null) })
+        item(key = "ALL") {
+          StatChip(
+            label = "All works",
+            count = total,
+            selected = selectedCode == null,
+            onClick = { onChipClick(null) },
+          )
+        }
       }
-      visibleStatusCodes.forEach { code ->
-        val label = SheetConfig.STATUS_SHORT_LABELS[code] ?: code
-        StatChip(
-          label = label,
-          count = statusCounts[code] ?: 0,
-          selected = selectedCode == code,
-          code = code,
-          onClick = { onChipClick(code) },
-        )
+      items(items = visibleOrder, key = { it }) { code ->
+        ReorderableItem(reorderableLazyListState, key = code) { isDragging ->
+          val elevation by animateDpAsState(if (isDragging) 6.dp else 0.dp, label = "chipElevation")
+          val interactionSource = remember { MutableInteractionSource() }
+          Surface(
+            shadowElevation = elevation,
+            shape = RoundedCornerShape(14.dp),
+            color = androidx.compose.ui.graphics.Color.Transparent,
+          ) {
+            StatChip(
+              label = SheetConfig.STATUS_SHORT_LABELS[code] ?: code,
+              count = statusCounts[code] ?: 0,
+              selected = selectedCode == code,
+              code = code,
+              onClick = { onChipClick(code) },
+              interactionSource = interactionSource,
+              modifier =
+                Modifier
+                  .longPressDraggableHandle(
+                    interactionSource = interactionSource,
+                    onDragStarted = {
+                      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    },
+                    onDragStopped = {
+                      haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                      onStatusOrderChange(StatusChipOrder.applyVisibleReorder(statusOrder, visibleOrder))
+                    },
+                  )
+                  .semantics { contentDescription = "Design status $code. Long press to reorder." },
+            )
+          }
+        }
       }
     }
 
@@ -81,7 +156,15 @@ fun StatChipsRow(
 }
 
 @Composable
-private fun StatChip(label: String, count: Int, selected: Boolean, onClick: () -> Unit, code: String? = null) {
+private fun StatChip(
+  label: String,
+  count: Int,
+  selected: Boolean,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+  code: String? = null,
+  interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+) {
   val tone = code?.let { statusTone(it) }
   val background =
     when {
@@ -98,9 +181,14 @@ private fun StatChip(label: String, count: Int, selected: Boolean, onClick: () -
 
   Column(
     modifier =
-      Modifier.clip(RoundedCornerShape(14.dp))
+      modifier
+        .clip(RoundedCornerShape(14.dp))
         .background(background)
-        .clickable(onClick = onClick)
+        .clickable(
+          interactionSource = interactionSource,
+          indication = LocalIndication.current,
+          onClick = onClick,
+        )
         .padding(horizontal = 14.dp, vertical = 8.dp),
   ) {
     Text(text = count.toString(), style = MaterialTheme.typography.titleMedium, color = textColor)

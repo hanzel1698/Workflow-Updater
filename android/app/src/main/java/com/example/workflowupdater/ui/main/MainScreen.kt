@@ -137,8 +137,10 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
       Spacer(Modifier.height(8.dp))
       StatChipsRow(
         statusCounts = state.statusCounts,
+        statusOrder = state.statusChipOrder,
         selectedCode = state.filters.statusCode,
         onChipClick = viewModel::onStatusChipSelected,
+        onStatusOrderChange = viewModel::onStatusChipOrderChange,
         hasAnyFilter = state.hasAnyFilter,
         onClearAllFilters = viewModel::clearAllFilters,
       )
