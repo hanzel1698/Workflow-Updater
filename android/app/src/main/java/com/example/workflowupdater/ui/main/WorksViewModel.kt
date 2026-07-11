@@ -26,7 +26,24 @@ class WorksViewModel(private val repository: WorkflowRepository, private val pro
   val uiState: StateFlow<WorksUiState> = _uiState.asStateFlow()
 
   init {
-    refresh()
+    // Show the last saved sheet immediately (works with no internet), then refresh from the network.
+    viewModelScope.launch {
+      val profile = _uiState.value.activeProfile
+      val cached = repository.loadCachedWorks(profile)
+      if (cached != null && cached.works.isNotEmpty()) {
+        _uiState.update { state ->
+          state
+            .copy(
+              isLoading = false,
+              allWorks = cached.works,
+              isOffline = true,
+              lastSyncedAtMillis = cached.lastSyncedAtMillis,
+            )
+            .recomputeDerived()
+        }
+      }
+      refresh()
+    }
   }
 
   fun refresh() {
@@ -45,7 +62,7 @@ class WorksViewModel(private val repository: WorkflowRepository, private val pro
             allWorks = result.works,
             isOffline = result.isOffline,
             errorMessage = result.errorMessage?.takeIf { result.works.isEmpty() },
-            lastSyncedAtMillis = System.currentTimeMillis(),
+            lastSyncedAtMillis = result.lastSyncedAtMillis ?: state.lastSyncedAtMillis,
           )
           .recomputeDerived()
       }
@@ -56,7 +73,22 @@ class WorksViewModel(private val repository: WorkflowRepository, private val pro
     if (profile.id == _uiState.value.activeProfile.id) return
     profilePrefs.activeProfileId = profile.id
     _uiState.update { it.copy(activeProfile = profile, allWorks = emptyList(), filters = WorkFilters()).recomputeDerived() }
-    refresh()
+    viewModelScope.launch {
+      val cached = repository.loadCachedWorks(profile)
+      if (cached != null && cached.works.isNotEmpty()) {
+        _uiState.update { state ->
+          state
+            .copy(
+              isLoading = false,
+              allWorks = cached.works,
+              isOffline = true,
+              lastSyncedAtMillis = cached.lastSyncedAtMillis ?: state.lastSyncedAtMillis,
+            )
+            .recomputeDerived()
+        }
+      }
+      refresh()
+    }
   }
 
   fun setDefaultProfile(profile: EngineerProfile) {

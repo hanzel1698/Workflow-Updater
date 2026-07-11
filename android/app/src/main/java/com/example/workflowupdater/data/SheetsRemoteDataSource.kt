@@ -14,11 +14,15 @@ import org.json.JSONObject
 /** Raw response from the Apps Script Web App backing the live workflow sheet. */
 data class RawSheetResponse(val headers: List<String>, val rows: List<Map<String, String>>)
 
+fun interface SheetDataSource {
+  suspend fun fetchSheet(scriptUrl: String): Result<RawSheetResponse>
+}
+
 /** Talks to the same Google Apps Script Web App the Windows dashboard uses (see
  *  windows/google_apps_script.js), so both clients always read the identical live data. */
-class SheetsRemoteDataSource {
+class SheetsRemoteDataSource : SheetDataSource {
 
-  suspend fun fetchSheet(scriptUrl: String): Result<RawSheetResponse> =
+  override suspend fun fetchSheet(scriptUrl: String): Result<RawSheetResponse> =
     withContext(Dispatchers.IO) {
       runCatching {
         val url = buildUrl(scriptUrl)

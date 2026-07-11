@@ -2,16 +2,38 @@ package com.example.workflowupdater.data
 
 /** Outcome of a load attempt: the resolved list of works plus whether we had to fall back to
  *  cached or offline sample data because the live sheet couldn't be reached. */
-data class WorkflowResult(val works: List<WorkItem>, val isOffline: Boolean, val errorMessage: String? = null)
+data class WorkflowResult(
+  val works: List<WorkItem>,
+  val isOffline: Boolean,
+  val errorMessage: String? = null,
+  val lastSyncedAtMillis: Long? = null,
+)
 
 interface WorkflowRepository {
+  /** Instantly returns the last good data from memory/disk (no network). */
+  suspend fun loadCachedWorks(profile: EngineerProfile): WorkflowResult?
+
+  /** Fetches the live sheet, persisting success; falls back to cache then sample on failure. */
   suspend fun loadWorks(profile: EngineerProfile): WorkflowResult
 }
 
-class DefaultWorkflowRepository(private val remote: SheetsRemoteDataSource = SheetsRemoteDataSource()) :
-  WorkflowRepository {
+class DefaultWorkflowRepository(
+  private val remote: SheetDataSource = SheetsRemoteDataSource(),
+  private val localCache: WorksLocalCache? = null,
+) : WorkflowRepository {
 
-  private val lastGoodByProfile = mutableMapOf<String, List<WorkItem>>()
+  private var lastGoodRows: List<Map<String, String>>? = null
+  private var lastSyncedAtMillis: Long? = null
+  private var diskWarmed = false
+
+  override suspend fun loadCachedWorks(profile: EngineerProfile): WorkflowResult? {
+    val rows = memoryOrDiskRows() ?: return null
+    return WorkflowResult(
+      works = filterAndNormalize(rows, profile),
+      isOffline = true,
+      lastSyncedAtMillis = lastSyncedAtMillis,
+    )
+  }
 
   override suspend fun loadWorks(profile: EngineerProfile): WorkflowResult {
     val scriptUrl = profile.scriptUrl.ifBlank { SheetConfig.SCRIPT_URL }
@@ -19,17 +41,23 @@ class DefaultWorkflowRepository(private val remote: SheetsRemoteDataSource = She
     val result = remote.fetchSheet(scriptUrl)
     val response = result.getOrNull()
     if (response != null) {
-      val works = filterAndNormalize(response.rows, profile)
-      lastGoodByProfile[profile.id] = works
-      return WorkflowResult(works = works, isOffline = false)
+      val syncedAt = System.currentTimeMillis()
+      rememberRows(response.rows, syncedAt)
+      localCache?.save(response.rows, syncedAt)
+      return WorkflowResult(
+        works = filterAndNormalize(response.rows, profile),
+        isOffline = false,
+        lastSyncedAtMillis = syncedAt,
+      )
     }
 
-    val cached = lastGoodByProfile[profile.id]
-    if (cached != null) {
+    val cachedRows = memoryOrDiskRows()
+    if (cachedRows != null) {
       return WorkflowResult(
-        works = cached,
+        works = filterAndNormalize(cachedRows, profile),
         isOffline = true,
         errorMessage = result.exceptionOrNull()?.message,
+        lastSyncedAtMillis = lastSyncedAtMillis,
       )
     }
 
@@ -38,7 +66,22 @@ class DefaultWorkflowRepository(private val remote: SheetsRemoteDataSource = She
       works = sample,
       isOffline = true,
       errorMessage = result.exceptionOrNull()?.message ?: "Could not reach the live sheet",
+      lastSyncedAtMillis = null,
     )
+  }
+
+  private suspend fun memoryOrDiskRows(): List<Map<String, String>>? {
+    lastGoodRows?.let { return it }
+    if (diskWarmed || localCache == null) return null
+    diskWarmed = true
+    val snapshot = localCache.load() ?: return null
+    rememberRows(snapshot.rows, snapshot.syncedAtMillis)
+    return snapshot.rows
+  }
+
+  private fun rememberRows(rows: List<Map<String, String>>, syncedAtMillis: Long) {
+    lastGoodRows = rows
+    lastSyncedAtMillis = syncedAtMillis
   }
 }
 
