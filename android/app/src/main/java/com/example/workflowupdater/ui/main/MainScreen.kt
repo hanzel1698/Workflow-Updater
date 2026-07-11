@@ -149,7 +149,7 @@ fun MainScreen(viewModel: WorksViewModel, onWorkClick: (Int) -> Unit, modifier: 
       Spacer(Modifier.height(8.dp))
 
       if (state.isOffline) {
-        OfflineBanner(message = state.errorMessage)
+        OfflineBanner(message = state.errorMessage, lastSyncedAtMillis = state.lastSyncedAtMillis)
       }
 
       PullToRefreshBox(
@@ -268,7 +268,20 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 }
 
 @Composable
-private fun OfflineBanner(message: String?) {
+private fun OfflineBanner(message: String?, lastSyncedAtMillis: Long?) {
+  val syncedLabel =
+    lastSyncedAtMillis?.let { millis ->
+      val formatter =
+        java.text.SimpleDateFormat("dd MMM yyyy, h:mm a", java.util.Locale.getDefault())
+      "Last updated ${formatter.format(java.util.Date(millis))}"
+    }
+  val body =
+    when {
+      !message.isNullOrBlank() && syncedLabel != null -> "$message \u00b7 $syncedLabel"
+      !message.isNullOrBlank() -> message
+      syncedLabel != null -> "Showing saved data \u2014 $syncedLabel. Pull down to retry."
+      else -> "Showing saved data \u2014 pull down to retry the live sheet"
+    }
   Row(
     modifier =
       Modifier.fillMaxWidth()
@@ -280,7 +293,7 @@ private fun OfflineBanner(message: String?) {
     Icon(Icons.Filled.CloudOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
     Spacer(Modifier.width(8.dp))
     Text(
-      text = message ?: "Showing saved data \u2014 pull down to retry the live sheet",
+      text = body,
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
