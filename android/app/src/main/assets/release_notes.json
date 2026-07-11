@@ -1,19 +1,9 @@
 {
-  "versionCode": 3,
+  "versionCode": 7,
   "versionName": "2.1.0",
   "title": "What's New",
   "features": [
-    "Restore Android PDF export via print preview.",
-    "Fix Android PDF table overflow and extra blank pages.",
-    "Fix blank Android PDF export by rendering off-screen WebView.",
-    "Fix Android CI release notes script path.",
-    "Standardize PDF export with engineer name prompt and A3 output on Android.",
-    "Fix windows launcher batch file paths when run from the windows folder.",
-    "Add one-time What's New screen for release APK installs.",
-    "Fix sheet date display to match Google Sheets DD/MM/YYYY format.",
-    "Refactor Android app into read-only searchable works viewer with PDF export",
-    "Fix APK artifact path for android subfolder build.",
-    "Publish GitHub Release with APK on every build push.",
-    "Unify Android release signing with shared upload keystore."
+    "Open the app offline using the latest sheet data saved on your phone",
+    "Long-press design status chips to reorder them for faster filtering"
   ]
 }
