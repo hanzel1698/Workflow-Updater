@@ -6,15 +6,30 @@ Custom dashboard frontend for the RDO KKD Google Sheets workflow tracker.
 
 | Folder | Purpose |
 |--------|---------|
-| `windows/` | Desktop/web app (HTML/CSS/JS), Python local server, and EXE build scripts |
-| `android/` | Android WebView app that bundles the same dashboard for mobile |
+| `windows/` | Desktop dashboard (HTML/CSS/JS) with editing, Python local server, and EXE build scripts |
+| `web/` | Read-only web app — the Android app's feature set in any browser, phone or desktop |
+| `android/` | Native Android app (Jetpack Compose) for viewing works on mobile |
 | `scripts/` | Shared maintenance scripts |
 
-The **canonical web source** lives in `windows/`. After editing those files, sync them into the Android app:
+`windows/` is the editing dashboard. `web/` and `android/` are read-only viewers that share the same
+Google Sheet, engineer roster, design-status rules and PDF report — when those change, update
+`windows/config.js`, `web/js/config.js` and `android/.../data/SheetConfig.kt` together.
+
+## Web app
+
+**Run locally:**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\sync-android-assets.ps1
+cd web
+powershell -ExecutionPolicy Bypass -File .\start_server.ps1
 ```
+
+or double-click `web\Launch Web App.bat`. It opens <http://localhost:8080>.
+
+Static HTML/CSS/ES modules with no build step, so publishing is a straight upload of the `web/`
+folder to any static host. It works offline once loaded and can be installed to a phone's home
+screen. See [`web/README.md`](web/README.md) for the full feature-parity table and
+`node web/tests/run-tests.mjs` for its test suite.
 
 ## Windows app
 
