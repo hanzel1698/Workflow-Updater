@@ -18,12 +18,15 @@
   'use strict';
 
   var SETTINGS_KEY = 'wu.web.settings.v1';
-  var SHEET_CACHE_KEY = 'wu.web.sheetCache.v1';
+  var SHEET_CACHE_KEY = 'wu.web.sheetCache.v2';
+  var LEGACY_CACHE_KEYS = ['wu.web.sheetCache.v1'];
+  var MAX_CACHE_ENTRIES = 4;
   var SCRIPT_HOST_RE = /^https?:\/\/script\.google(usercontent)?\.com\//i;
 
   var params = new URLSearchParams(window.location.search);
   var settings = readSettings();
-  var sheetCache = { fromCache: false, savedAt: 0 };
+  var sheetCache = { fromCache: false, savedAt: 0, refreshing: false };
+  var freshOverride = null;
   var deferredInstallPrompt = null;
   var updateRequested = false;
   var reloadingForUpdate = false;
@@ -121,34 +124,71 @@
     return Boolean(configured) && url.indexOf(configured) === 0;
   }
 
-  function saveSheetPayload(sourceUrl, payload) {
+  // The cache is keyed by the full request URL, query string included, so each
+  // engineer profile keeps its own copy and switching profiles paints instantly
+  // instead of replaying somebody else's rows.
+  function readCacheMap() {
     try {
-      window.localStorage.setItem(
-        SHEET_CACHE_KEY,
-        JSON.stringify({ savedAt: Date.now(), sourceUrl: sourceUrl, payload: payload })
-      );
+      var raw = window.localStorage.getItem(SHEET_CACHE_KEY);
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (err) {
-      // Quota exceeded (very large sheets): drop the cache rather than break sync.
+      return {};
+    }
+  }
+
+  function writeCacheMap(map) {
+    try {
+      window.localStorage.setItem(SHEET_CACHE_KEY, JSON.stringify(map));
+      return true;
+    } catch (err) {
+      // Out of quota: keep only the entry we just wrote, and give up quietly if
+      // even that will not fit. A missing cache slows the app down; it never
+      // breaks it.
       try {
         window.localStorage.removeItem(SHEET_CACHE_KEY);
       } catch (ignored) {
         /* nothing else to do */
       }
+      return false;
     }
   }
 
-  function readSheetPayload(sourceUrl) {
-    try {
-      var raw = window.localStorage.getItem(SHEET_CACHE_KEY);
-      if (!raw) return null;
-      var entry = JSON.parse(raw);
-      if (!entry || !entry.payload) return null;
-      // Never show one office's cached rows against another endpoint.
-      if (entry.sourceUrl && sourceUrl && entry.sourceUrl !== sourceUrl) return null;
-      return entry;
-    } catch (err) {
-      return null;
+  function saveSheetPayload(requestUrl, payload) {
+    var map = readCacheMap();
+    map[requestUrl] = { savedAt: Date.now(), payload: payload };
+
+    var keys = Object.keys(map);
+    if (keys.length > MAX_CACHE_ENTRIES) {
+      keys
+        .sort(function (a, b) {
+          return (map[a].savedAt || 0) - (map[b].savedAt || 0);
+        })
+        .slice(0, keys.length - MAX_CACHE_ENTRIES)
+        .forEach(function (key) {
+          delete map[key];
+        });
     }
+
+    if (!writeCacheMap(map)) {
+      var only = {};
+      only[requestUrl] = { savedAt: Date.now(), payload: payload };
+      writeCacheMap(only);
+    }
+  }
+
+  function readSheetPayload(requestUrl) {
+    var entry = readCacheMap()[requestUrl];
+    return entry && entry.payload ? entry : null;
+  }
+
+  function newestCacheEntry() {
+    var map = readCacheMap();
+    return Object.keys(map).reduce(function (best, key) {
+      var entry = map[key];
+      return !best || (entry.savedAt || 0) > (best.savedAt || 0) ? entry : best;
+    }, null);
   }
 
   function clearSheetPayload() {
@@ -157,6 +197,23 @@
     } catch (err) {
       /* ignore */
     }
+  }
+
+  function dropLegacyCaches() {
+    LEGACY_CACHE_KEYS.forEach(function (key) {
+      try {
+        window.localStorage.removeItem(key);
+      } catch (err) {
+        /* ignore */
+      }
+    });
+  }
+
+  function jsonResponse(payload) {
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   function installFetchCache() {
@@ -169,56 +226,122 @@
 
       if (method !== 'GET' || !isSheetReadUrl(url)) return nativeFetch(input, init);
 
-      var baseUrl = url.split('?')[0];
+      // Second leg of a background refresh: hand app.js the fresh payload it is
+      // now asking for, without going to the network a second time.
+      if (freshOverride && freshOverride.url === url) {
+        var payload = freshOverride.payload;
+        freshOverride = null;
+        return Promise.resolve(jsonResponse(payload));
+      }
 
-      return nativeFetch(input, init).then(
+      var cached = readSheetPayload(url);
+      var network = nativeFetch(input, init).then(
         function (response) {
-          if (!response.ok) return replayCache(baseUrl, new Error('HTTP ' + response.status), response);
-          // A live answer clears any "showing saved data" state from an earlier sync.
-          sheetCache.fromCache = false;
-          updateStatusPill();
-          return response
-            .clone()
-            .json()
-            .then(function (data) {
-              if (data && data.success) {
-                sheetCache.savedAt = Date.now();
-                saveSheetPayload(baseUrl, data);
-              }
-              return response;
-            })
-            .catch(function () {
-              return response;
-            });
+          return interpretResponse(url, response);
         },
         function (err) {
-          return replayCache(baseUrl, err, null);
+          return { kind: 'unavailable', error: err };
         }
       );
+
+      // Nothing saved yet: the first load on a device has to wait for the sheet.
+      if (!cached) {
+        return network.then(function (result) {
+          if (result.kind === 'fresh') {
+            sheetCache.fromCache = false;
+            sheetCache.savedAt = Date.now();
+            saveSheetPayload(url, result.payload);
+            updateStatusPill();
+            return jsonResponse(result.payload);
+          }
+          // A JSON error from the script itself is a configuration problem the
+          // user needs to see, so it is passed through untouched.
+          if (result.kind === 'scriptError') return result.response;
+          if (result.response) return result.response;
+          throw result.error;
+        });
+      }
+
+      // Saved copy available: paint it now, refresh in the background.
+      sheetCache.fromCache = true;
+      sheetCache.savedAt = cached.savedAt || 0;
+      sheetCache.refreshing = true;
+      window.setTimeout(updateStatusPill, 0);
+
+      network.then(function (result) {
+        sheetCache.refreshing = false;
+
+        if (result.kind !== 'fresh') {
+          updateStatusPill();
+          return;
+        }
+
+        saveSheetPayload(url, result.payload);
+        sheetCache.fromCache = false;
+        sheetCache.savedAt = Date.now();
+
+        // Identical data: keep the screen exactly as it is, no reload flicker.
+        if (JSON.stringify(cached.payload) === JSON.stringify(result.payload)) {
+          updateStatusPill();
+          return;
+        }
+
+        freshOverride = { url: url, payload: result.payload };
+        updateStatusPill();
+        if (typeof window.loadData === 'function') {
+          refreshWithoutSkeletons();
+        } else {
+          freshOverride = null;
+        }
+      });
+
+      return Promise.resolve(jsonResponse(cached.payload));
     };
   }
 
-  function replayCache(baseUrl, err, fallbackResponse) {
-    var entry = readSheetPayload(baseUrl);
-    if (!entry) {
-      if (fallbackResponse) return fallbackResponse;
-      throw err;
+  /**
+   * Re-runs the app's own load path for a background refresh. loadData() opens with
+   * renderSkeletons(), which would blank out rows the user is already reading, so the
+   * skeletons are muted for this one pass — the refresh should be invisible until the
+   * new rows land.
+   */
+  function refreshWithoutSkeletons() {
+    var original = window.renderSkeletons;
+    if (typeof original === 'function') {
+      window.renderSkeletons = function () {};
     }
-    sheetCache.fromCache = true;
-    sheetCache.savedAt = entry.savedAt || 0;
-    window.setTimeout(announceCachedData, 400);
-    return new Response(JSON.stringify(entry.payload), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    try {
+      window.loadData();
+    } finally {
+      // loadData() calls renderSkeletons() synchronously before its first await,
+      // so the original is safely back in place for every later sync.
+      window.setTimeout(function () {
+        if (typeof original === 'function') window.renderSkeletons = original;
+      }, 0);
+    }
   }
 
-  function announceCachedData() {
-    var stamp = formatSavedAt(sheetCache.savedAt);
-    if (typeof window.showToast === 'function') {
-      window.showToast('Offline copy — showing sheet data saved ' + stamp, 'warning');
-    }
-    updateStatusPill();
+  /**
+   * Sorts a sheet response into: usable data, an error the script itself reported
+   * (pass it through so the user sees the real message), or an unavailable
+   * endpoint — which covers the HTML error pages Apps Script serves under load,
+   * where the status is 200 but the body is not JSON.
+   */
+  function interpretResponse(url, response) {
+    if (!response.ok) return { kind: 'unavailable', response: response, error: new Error('HTTP ' + response.status) };
+
+    return response
+      .clone()
+      .json()
+      .then(
+        function (data) {
+          if (data && data.success) return { kind: 'fresh', payload: data, response: response };
+          return { kind: 'scriptError', response: response };
+        },
+        function () {
+          return { kind: 'unavailable', error: new Error('Response was not JSON') };
+        }
+      );
   }
 
   function formatSavedAt(timestamp) {
@@ -415,13 +538,13 @@
     var meta = document.getElementById('wu-settings-meta');
     if (!meta) return;
     var config = window.CONFIG || {};
-    var entry = readSheetPayload(null);
+    var entry = newestCacheEntry();
     var rows = entry && entry.payload && Array.isArray(entry.payload.rows) ? entry.payload.rows.length : 0;
 
     meta.innerHTML = [
       '<div><strong>In use now:</strong> ' + (activeScriptUrl() ? 'live endpoint configured' : 'no endpoint set') + '</div>',
       '<div><strong>Sheet tab:</strong> ' + escapeHtml(config.SHEET_NAME || '—') + '</div>',
-      '<div><strong>Offline copy:</strong> ' +
+      '<div><strong>Saved copy:</strong> ' +
         (entry ? rows + ' rows saved ' + formatSavedAt(entry.savedAt) : 'none yet') +
         (entry ? ' · <button type="button" class="wu-linkbtn" id="wu-clear-cache">Clear</button>' : '') +
         '</div>'
@@ -432,7 +555,7 @@
       clearBtn.addEventListener('click', function () {
         clearSheetPayload();
         renderSettingsMeta();
-        if (typeof window.showToast === 'function') window.showToast('Offline copy cleared.', 'info');
+        if (typeof window.showToast === 'function') window.showToast('Saved copy cleared.', 'info');
       });
     }
   }
@@ -482,6 +605,10 @@
           : 'Offline — changes cannot be saved',
         'offline'
       );
+      return;
+    }
+    if (sheetCache.fromCache && sheetCache.refreshing) {
+      setPill('Showing data saved ' + formatSavedAt(sheetCache.savedAt) + ' · checking the sheet…', '');
       return;
     }
     if (sheetCache.fromCache) {
@@ -593,6 +720,7 @@
   }
 
   function boot() {
+    dropLegacyCaches();
     injectStyles();
     injectControls();
     buildSettingsModal();

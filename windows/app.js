@@ -119,7 +119,12 @@ function getMatchingKey(row, keyOrKeys) {
 // Build GET URL and POST payload with optional spreadsheet ID for standalone script deployments
 function buildScriptGetUrl(baseUrl) {
   const separator = baseUrl.includes('?') ? '&' : '?';
-  return `${baseUrl}${separator}sheet=${encodeURIComponent(CONFIG.SHEET_NAME || CONFIG.PROFILE.DESIGN_OFFICE)}&spreadsheetId=${encodeURIComponent(CONFIG.SPREADSHEET_ID || '')}`;
+  // Ask the Apps Script for just this profile's works. A deployment that predates
+  // server-side filtering ignores these and returns the whole sheet, which the
+  // client filters exactly the same way — so this is safe to send either way.
+  const activeProfile = getActiveProfile();
+  const office = CONFIG.PROFILE.DESIGN_OFFICE || '';
+  return `${baseUrl}${separator}sheet=${encodeURIComponent(CONFIG.SHEET_NAME || CONFIG.PROFILE.DESIGN_OFFICE)}&spreadsheetId=${encodeURIComponent(CONFIG.SPREADSHEET_ID || '')}&ase=${encodeURIComponent(activeProfile.id || '')}&office=${encodeURIComponent(office)}`;
 }
 
 function withSpreadsheetId(payload) {

@@ -124,6 +124,43 @@ function getTargetSheet(ss, source) {
 }
 
 /**
+ * Case-insensitive header lookup, mirroring the CONFIG.COLUMNS fallback names in config.js.
+ */
+function findHeaderIndex_(headers, candidates) {
+  for (var c = 0; c < candidates.length; c++) {
+    var want = candidates[c].toString().trim().toLowerCase();
+    for (var i = 0; i < headers.length; i++) {
+      if (headers[i].toString().trim().toLowerCase() === want) return i;
+    }
+  }
+  return -1;
+}
+
+function cellText_(value) {
+  if (value === undefined || value === null) return "";
+  return value.toString().trim().toLowerCase();
+}
+
+/**
+ * Optional server-side narrowing.
+ *
+ * The dashboard sends the profile it is about to display (ase=AD&office=RDO KKD),
+ * so the response carries just that engineer's works instead of the whole master
+ * sheet — roughly 30 rows instead of 900. This mirrors filterTasksByProfile() in
+ * app.js exactly (exact match on ASE, "contains" match on Design Office), so the
+ * server can never hide a row the client would have shown.
+ *
+ * Both parameters are optional. With neither, the full sheet is returned exactly
+ * as before, so older clients keep working against a new deployment. A missing
+ * column is never treated as a mismatch, for the same reason.
+ */
+function rowMatchesProfile_(rowData, aseCol, officeCol, wantAse, wantOffice) {
+  if (wantAse && aseCol !== -1 && cellText_(rowData[aseCol]) !== wantAse) return false;
+  if (wantOffice && officeCol !== -1 && cellText_(rowData[officeCol]).indexOf(wantOffice) === -1) return false;
+  return true;
+}
+
+/**
  * Reads validated dropdown lists from the "Dropdown Details" reference sheet.
  * Each column header holds the allowed values for the corresponding workflow column.
  */
@@ -247,11 +284,20 @@ function doGet(e) {
     var headerRowIndex = getHeaderRowIndex(data);
     var headers = data[headerRowIndex].map(function(h) { return h.toString().trim(); });
     
+    // Narrow to the requested profile before building row objects, so the rows the
+    // dashboard will not display are never serialised into the response at all.
+    var params = (e && e.parameter) || {};
+    var wantAse = cellText_(params.ase);
+    var wantOffice = cellText_(params.office);
+    var aseCol = wantAse ? findHeaderIndex_(headers, ["ASE"]) : -1;
+    var officeCol = wantOffice ? findHeaderIndex_(headers, ["DESIGN OFFICE", "Design Office"]) : -1;
+
     var rows = [];
     // Data rows start immediately after the header row
     for (var i = headerRowIndex + 1; i < data.length; i++) {
       var rowData = data[i];
       if (!isPopulatedDataRow(rowData, headers)) continue;
+      if (!rowMatchesProfile_(rowData, aseCol, officeCol, wantAse, wantOffice)) continue;
       
       var row = {};
       row["_rowNum"] = i + 1; // 1-based sheet row index for fast updates
@@ -269,7 +315,10 @@ function doGet(e) {
       success: true,
       headers: headers,
       rows: rows,
-      dropdowns: getDropdownOptions(ss)
+      dropdowns: getDropdownOptions(ss),
+      filteredBy: (wantAse || wantOffice)
+        ? { ase: params.ase || "", office: params.office || "" }
+        : null
     });
     
   } catch (error) {

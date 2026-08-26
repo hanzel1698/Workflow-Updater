@@ -39,6 +39,9 @@ What the web build adds on top of `windows/`:
 - **Installable** — the header's *Install App* button (or the browser's own install control) puts it
   on the home screen / Start menu and launches it without browser chrome. On iPhone/iPad, Safari
   has no install button: use **Share → Add to Home Screen**.
+- **Opens instantly** — after the first visit the dashboard paints from the last saved copy
+  immediately and refreshes in the background, so a slow Apps Script response never leaves you
+  staring at loading skeletons. If the fresh data is identical, nothing re-renders.
 - **Works offline** — a service worker caches the app shell, and the last sheet payload is kept in
   the browser. Launching offline shows that data with a pill saying when it was saved. Writing back
   to the sheet still needs a connection.
@@ -123,3 +126,25 @@ keyPassword=YOUR_KEY_PASSWORD
 ## Google Apps Script
 
 Deploy `windows/google_apps_script.js` as a Web App from your Google Sheet and set the URL in `windows/config.js`.
+
+**Redeploy after editing the script.** Apps Script serves the deployed version, not the saved file:
+*Deploy → Manage deployments → edit (pencil) → Version: New version → Deploy*. Keep the same
+deployment so the Web App URL does not change.
+
+### Server-side profile filter
+
+`doGet` accepts two optional parameters, which the dashboard always sends:
+
+| Parameter | Example | Effect |
+|-----------|---------|--------|
+| `ase` | `AD` | Exact match on the ASE column |
+| `office` | `RDO KKD` | "Contains" match on the Design Office column |
+
+They mirror `filterTasksByProfile()` in `app.js` exactly, so the response carries only the rows the
+dashboard was going to display. Measured against the live sheet, the AD profile drops from
+**890 rows / 1111 KB to 34 rows / 38 KB**.
+
+Both parameters are optional and a missing column is never treated as a mismatch, so the filter can
+only ever return a superset of what the client shows. A deployment that predates this change simply
+ignores them and returns the whole sheet, which the client filters itself — old and new clients work
+against old and new deployments in any combination.
