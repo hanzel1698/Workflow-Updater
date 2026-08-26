@@ -8,17 +8,75 @@ Custom dashboard frontend for the RDO KKD Google Sheets workflow tracker.
 |--------|---------|
 | `windows/` | Desktop/web app (HTML/CSS/JS), Python local server, and EXE build scripts |
 | `android/` | Android WebView app that bundles the same dashboard for mobile |
+| `docs/` | GitHub Pages site — privacy policy at the root, hosted serverless web app in `docs/app/` |
 | `scripts/` | Shared maintenance scripts |
 
-The **canonical web source** lives in `windows/`. After editing those files, sync them into the Android app:
+The **canonical web source** lives in `windows/`. After editing those files, sync the copies:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\sync-android-assets.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\sync-android-assets.ps1   # Android assets
+python3 scripts/sync-web-assets.py                                           # docs/app web app
 ```
+
+## Web app (no server)
+
+`docs/app/` is the same dashboard built to run entirely in the browser — no Python, no Node, no
+backend. It calls the Google Apps Script Web App directly, so publishing it is nothing more than
+serving static files.
+
+**Live URL** once GitHub Pages is enabled:
+
+```
+https://<your-github-user>.github.io/Workflow-Updater/app/
+```
+
+Enable it once under **Settings → Pages → Build and deployment → Deploy from a branch →
+`master` + `/docs`**. The privacy policy keeps the site root; the dashboard is served from `/app/`.
+Open that URL on a phone or PC and the dashboard is simply there — no launcher, no local server.
+
+What the web build adds on top of `windows/`:
+
+- **Installable** — the header's *Install App* button (or the browser's own install control) puts it
+  on the home screen / Start menu and launches it without browser chrome. On iPhone/iPad, Safari
+  has no install button: use **Share → Add to Home Screen**.
+- **Works offline** — a service worker caches the app shell, and the last sheet payload is kept in
+  the browser. Launching offline shows that data with a pill saying when it was saved. Writing back
+  to the sheet still needs a connection.
+- **Settings in the UI** — the Apps Script URL, Sheet ID and tab name are editable from the
+  *Settings* button and stored in that browser only, so each engineer can point the app at their own
+  deployment without editing `config.js`.
+- **Fast start** — the Google Fonts import is taken off the render-blocking path, so a slow or
+  missing network no longer delays the dashboard by several seconds.
+
+URL options: `?demo=1` loads the bundled sample data (handy for showing the app without the sheet),
+`?profile=ASE01` opens a specific engineer profile.
+
+### Rebuilding the web app
+
+`windows/` stays the canonical source. After editing it, re-run:
+
+```bash
+python3 scripts/sync-web-assets.py        # Windows: py scripts\sync-web-assets.py
+```
+
+That copies `index.html`, `app.js`, `config.js` and `style.css` into `docs/app/`, injects the PWA
+tags, and re-stamps the service worker so returning visitors pick up the change. The
+**Web App In Sync** workflow fails the build if `docs/app/` is stale.
+
+Icons are generated and only need rebuilding if the artwork changes:
+
+```bash
+python3 scripts/generate-web-icons.py
+```
+
+Files owned by the web build and never overwritten by the sync: `web-boot.js` (settings, offline
+cache, install prompt), `sw.js`, `manifest.webmanifest`, `icons/`.
 
 ## Windows app
 
 **Quick start:** double-click `Launch Dashboard.bat` at the repo root (or `windows\Launch Dashboard.bat`).
+This starts a local Python/Node server because browsers block live sheet access from `file://`. To
+skip that entirely, use the hosted [web app](#web-app-no-server) instead.
 
 **Standalone EXE:**
 

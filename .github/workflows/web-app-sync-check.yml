@@ -1,0 +1,40 @@
+name: Web App In Sync
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "windows/**"
+      - "docs/app/**"
+      - "scripts/sync-web-assets.py"
+      - ".github/workflows/web-app-sync-check.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+      - "docs/app/**"
+      - "scripts/sync-web-assets.py"
+      - ".github/workflows/web-app-sync-check.yml"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Rebuild the web app from windows/
+        run: python3 scripts/sync-web-assets.py
+
+      - name: Fail if docs/app is out of date
+        run: |
+          if ! git diff --exit-code -- docs/app; then
+            echo "::error::docs/app is stale. Run 'python3 scripts/sync-web-assets.py' and commit the result."
+            exit 1
+          fi
+          echo "docs/app matches windows/"
