@@ -21,9 +21,25 @@ cd web && python3 -m http.server 8080   # then open http://localhost:8080
 It must be served over HTTP, not opened from disk — ES modules, the service worker and the live
 sheet fetch are all blocked on `file://`.
 
-To publish it, upload the `web/` folder to any static host (GitHub Pages, Netlify, an office
-intranet share). Nothing server-side is required: the browser talks to the Apps Script Web App
-directly, exactly as the phone does.
+## Published site
+
+`.github/workflows/deploy-pages.yml` publishes this folder to GitHub Pages on every push to
+`master` that touches `docs/` or `web/`:
+
+| URL | Source |
+|---|---|
+| `https://hanzel1698.github.io/Workflow-Updater/` | `docs/` — the privacy policy URL registered with Google Play |
+| `https://hanzel1698.github.io/Workflow-Updater/app/` | this folder |
+
+`web/` stays the only copy — the workflow assembles the site at build time, so there is nothing to
+sync by hand. Developer-only files (`tests/`, `README.md`, the launcher scripts) are left out of the
+published site.
+
+The app is served from a subdirectory, and every asset path in it is relative, so no base-path
+rewriting is needed. It is marked `noindex` because the sheet it reads is office-internal: the URL
+works for anyone who has it, but it stays out of search results. Nothing server-side is required —
+the browser talks to the Apps Script Web App directly, exactly as the phone does. Any other static
+host (Netlify, an office intranet share) works the same way.
 
 ## Feature parity with the Android app
 

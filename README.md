@@ -26,9 +26,12 @@ powershell -ExecutionPolicy Bypass -File .\start_server.ps1
 
 or double-click `web\Launch Web App.bat`. It opens <http://localhost:8080>.
 
-Static HTML/CSS/ES modules with no build step, so publishing is a straight upload of the `web/`
-folder to any static host. It works offline once loaded and can be installed to a phone's home
-screen. See [`web/README.md`](web/README.md) for the full feature-parity table and
+**Published:** <https://hanzel1698.github.io/Workflow-Updater/app/> — deployed by
+`.github/workflows/deploy-pages.yml` on every push to `master` that touches `docs/` or `web/`.
+The same workflow keeps the privacy policy at <https://hanzel1698.github.io/Workflow-Updater/>.
+
+Static HTML/CSS/ES modules with no build step. It works offline once loaded and can be installed to
+a phone's home screen. See [`web/README.md`](web/README.md) for the full feature-parity table and
 `node web/tests/run-tests.mjs` for its test suite.
 
 ## Windows app

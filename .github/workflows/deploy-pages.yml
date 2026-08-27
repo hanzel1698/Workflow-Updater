@@ -1,0 +1,93 @@
+name: Deploy GitHub Pages
+
+# Publishes two things from one site:
+#   /      -> docs/  (privacy policy — the URL registered with Google Play, must not move)
+#   /app/  -> web/   (the read-only works dashboard)
+#
+# Requires Settings > Pages > Source = "GitHub Actions" (one-time change from "Deploy from a branch").
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docs/**'
+      - 'web/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Assemble site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site/app
+
+          # Privacy policy and anything else in docs/ stays at the site root.
+          cp -R docs/. _site/
+
+          # The web app is served from /app/. Its asset paths are all relative,
+          # so it needs no rewriting to run from a subdirectory.
+          cp -R web/. _site/app/
+
+          # Developer-only files that should not be published.
+          rm -rf _site/app/tests
+          rm -f _site/app/README.md _site/app/start_server.ps1 "_site/app/Launch Web App.bat"
+
+          # Serve the artifact verbatim, even if Pages is ever switched back to a branch build.
+          touch _site/.nojekyll
+
+      - name: Verify the site is complete
+        run: |
+          set -euo pipefail
+          for required in \
+            _site/index.html \
+            _site/app/index.html \
+            _site/app/styles.css \
+            _site/app/sw.js \
+            _site/app/manifest.webmanifest \
+            _site/app/js/main.js \
+            _site/app/release_notes.json \
+            _site/app/icons/icon-192.png
+          do
+            test -f "$required" || { echo "::error::missing $required"; exit 1; }
+          done
+          grep -q 'Privacy Policy' _site/index.html || { echo "::error::privacy policy is missing from the site root"; exit 1; }
+          echo "Site contents:"
+          find _site -type f | sort
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
