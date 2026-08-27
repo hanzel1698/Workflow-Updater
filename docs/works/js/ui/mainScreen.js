@@ -139,14 +139,26 @@ export function createMainScreen({ viewModel, onWorkClick }) {
         })}`
       : null;
 
-    let body;
-    if (state.errorMessage && syncedLabel) body = `${state.errorMessage} · ${syncedLabel}`;
-    else if (state.errorMessage) body = state.errorMessage;
-    else if (syncedLabel) body = `Showing saved data — ${syncedLabel}. Pull down to retry.`;
-    else body = 'Showing saved data — pull down to retry the live sheet';
+    // Be explicit about which data is on screen. "Sample data" is five invented rows, not the
+    // user's sheet — showing it as though it were saved data is worse than showing nothing.
+    let headline;
+    if (state.isSample) headline = 'Showing sample data, not your sheet.';
+    else if (syncedLabel) headline = `Showing your last synced data — ${syncedLabel}.`;
+    else headline = 'Showing saved data.';
 
     clear(offlineBanner);
-    offlineBanner.append(el('span', { className: 'meta-icon', html: Icons.cloudOff() }), el('span', { text: body }));
+    const lines = el('span', { className: 'offline-text' }, [el('span', { text: headline })]);
+    if (state.errorMessage) lines.append(el('span', { className: 'offline-reason', text: state.errorMessage }));
+    offlineBanner.append(
+      el('span', { className: 'meta-icon', html: Icons.cloudOff() }),
+      lines,
+      el('button', {
+        className: 'link-btn offline-retry',
+        text: 'Retry',
+        attrs: { type: 'button' },
+        on: { click: () => viewModel.refresh() },
+      }),
+    );
     offlineBanner.hidden = false;
   }
 

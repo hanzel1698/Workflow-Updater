@@ -60,6 +60,8 @@ export function createUiState(overrides = {}) {
     /** Persisted display order for design-status filter chips (two-digit codes, 01…09). */
     statusChipOrder: Object.keys(STATUS_SHORT_LABELS),
     isOffline: false,
+    /** True when the five built-in sample works are on screen instead of the user's sheet. */
+    isSample: false,
     errorMessage: null,
     lastSyncedAtMillis: null,
     isExporting: false,

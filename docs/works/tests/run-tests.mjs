@@ -272,7 +272,7 @@ test('a failed fetch falls back to the cached snapshot', async () => {
   assert.equal(result.lastSyncedAtMillis, 1700000000000);
 });
 
-test('with no cache a failed fetch falls back to the offline sample', async () => {
+test('with no cache a failed fetch falls back to the offline sample, and says so', async () => {
   const repository = createRepository({
     remote: async () => {
       throw new Error('boom');
@@ -282,8 +282,69 @@ test('with no cache a failed fetch falls back to the offline sample', async () =
   const result = await repository.loadWorks(profileById('AD'));
 
   assert.equal(result.isOffline, true);
+  assert.equal(result.isSample, true, 'sample rows must be labelled as such, not as saved data');
   assert.equal(result.works.length, MOCK_ROWS.length);
   assert.equal(result.lastSyncedAtMillis, null);
+});
+
+test('a transient failure is retried before giving up', async () => {
+  let calls = 0;
+  const repository = createRepository({
+    remote: async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('transient');
+      return { headers: [], rows: sampleRows() };
+    },
+    localCache: null,
+  });
+  const result = await repository.loadWorks(profileById('AD'));
+
+  assert.equal(calls, 2);
+  assert.equal(result.isOffline, false, 'the retry succeeded, so this is a live load');
+  assert.equal(result.works.length, 2);
+});
+
+test('browser network errors are translated into something actionable', async () => {
+  const repository = createRepository({
+    remote: async () => {
+      throw new TypeError('Failed to fetch');
+    },
+    localCache: null,
+  });
+  const result = await repository.loadWorks(profileById('AD'));
+
+  assert.match(result.errorMessage, /script\.google\.com/);
+  assert.doesNotMatch(result.errorMessage, /Failed to fetch/);
+});
+
+test('a timeout is reported as a timeout', async () => {
+  const repository = createRepository({
+    remote: async () => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      throw error;
+    },
+    localCache: null,
+  });
+  assert.match((await repository.loadWorks(profileById('AD'))).errorMessage, /too long to respond/);
+});
+
+test('the failure reason survives even when fallback data is shown', async () => {
+  const prefs = stubPrefs();
+  const repository = createRepository({
+    remote: async () => {
+      throw new TypeError('Failed to fetch');
+    },
+    localCache: null,
+  });
+  const viewModel = createWorksViewModel({ repository, prefs });
+  await viewModel.start();
+
+  const state = viewModel.getState();
+  assert.ok(state.works !== undefined || true);
+  assert.equal(state.isSample, true);
+  assert.ok(state.errorMessage, 'the reason must reach the UI, not be swallowed because rows exist');
+  assert.ok(state.allWorks.length > 0);
 });
 
 test('cached works are available before any network call', () => {

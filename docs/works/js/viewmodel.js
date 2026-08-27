@@ -41,7 +41,10 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
         isRefreshing: false,
         allWorks: result.works,
         isOffline: result.isOffline,
-        errorMessage: result.works.length === 0 ? result.errorMessage : null,
+        isSample: Boolean(result.isSample),
+        // Unlike the Android app, the reason is always surfaced: on the web a failure can be a
+        // blocked host, a CORS rejection or a timeout, and none of that is visible otherwise.
+        errorMessage: result.errorMessage,
         lastSyncedAtMillis: result.lastSyncedAtMillis ?? s.lastSyncedAtMillis,
       }),
     );

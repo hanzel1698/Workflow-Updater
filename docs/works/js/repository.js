@@ -18,6 +18,7 @@ import { createWorkItem, rowValue } from './model.js';
 import { WorksLocalCache } from './cache.js';
 
 const FETCH_TIMEOUT_MS = 20000;
+const RETRY_DELAY_MS = 1200;
 
 function buildUrl(scriptUrl) {
   const separator = scriptUrl.includes('?') ? '&' : '?';
@@ -100,6 +101,7 @@ export function createRepository({ remote = fetchSheet, localCache = WorksLocalC
       return {
         works: filterRowsForProfile(rows, profile),
         isOffline: true,
+        isSample: false,
         errorMessage: null,
         lastSyncedAtMillis,
       };
@@ -109,12 +111,17 @@ export function createRepository({ remote = fetchSheet, localCache = WorksLocalC
     async loadWorks(profile) {
       const scriptUrl = (profile.scriptUrl || '').trim() || SCRIPT_URL;
 
+      // Apps Script can be slow to wake, and mobile networks drop requests. One retry turns
+      // most transient failures into a normal load instead of a fallback.
       let response = null;
       let failure = null;
-      try {
-        response = await remote(scriptUrl);
-      } catch (error) {
-        failure = error;
+      for (let attempt = 0; attempt < 2 && !response; attempt += 1) {
+        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+        try {
+          response = await remote(scriptUrl);
+        } catch (error) {
+          failure = error;
+        }
       }
 
       if (response) {
@@ -134,6 +141,7 @@ export function createRepository({ remote = fetchSheet, localCache = WorksLocalC
         return {
           works: filterRowsForProfile(cachedRows, profile),
           isOffline: true,
+          isSample: false,
           errorMessage: describeFailure(failure),
           lastSyncedAtMillis,
         };
@@ -142,6 +150,7 @@ export function createRepository({ remote = fetchSheet, localCache = WorksLocalC
       return {
         works: filterRowsForProfile(MOCK_ROWS, profile),
         isOffline: true,
+        isSample: true,
         errorMessage: describeFailure(failure) || 'Could not reach the live sheet',
         lastSyncedAtMillis: null,
       };
@@ -149,8 +158,20 @@ export function createRepository({ remote = fetchSheet, localCache = WorksLocalC
   };
 }
 
+/**
+ * Browsers report a blocked or unreachable cross-origin request as a bare
+ * "TypeError: Failed to fetch", which tells the user nothing. Translate the cases we can
+ * recognise into something they can act on, and pass anything else through verbatim.
+ */
 function describeFailure(error) {
   if (!error) return null;
   if (error.name === 'AbortError') return 'The live sheet took too long to respond';
-  return error.message || 'Could not reach the live sheet';
+  const message = error.message || '';
+  if (error.name === 'TypeError' || /failed to fetch|networkerror|load failed/i.test(message)) {
+    return 'Could not reach script.google.com — check the connection, or whether the network blocks it';
+  }
+  if (/^HTTP 401|^HTTP 403/.test(message)) {
+    return `${message} — the Apps Script Web App is not shared with "Anyone"`;
+  }
+  return message || 'Could not reach the live sheet';
 }
