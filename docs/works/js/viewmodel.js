@@ -6,7 +6,7 @@
 import { profileById } from './config.js';
 import { ProfilePrefs } from './prefs.js';
 import { normalize } from './chipOrder.js';
-import { buildReportHtml } from './report.js';
+import { buildReportBody } from './report.js';
 import { createFilters, createUiState, recomputeDerived } from './state.js';
 
 export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
@@ -128,8 +128,9 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
       update((s) => ({ ...s, isExporting: exporting }));
     },
 
-    buildReportHtml(engineerName) {
-      return buildReportHtml(state.filteredWorks, state.activeProfile, engineerName);
+    /** The report markup for the print view — see ui/pdfExport.js. */
+    buildReportBody(engineerName) {
+      return buildReportBody(state.filteredWorks, state.activeProfile, engineerName);
     },
 
     findWork(rowNum) {

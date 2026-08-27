@@ -112,7 +112,7 @@ export function createMainScreen({ viewModel, onWorkClick }) {
 
   function exportPdf(engineerName) {
     viewModel.setExporting(true);
-    const html = viewModel.buildReportHtml(engineerName);
+    const html = viewModel.buildReportBody(engineerName);
     printReport({
       html,
       jobName: jobNameFor(state.activeProfile.id, engineerName),

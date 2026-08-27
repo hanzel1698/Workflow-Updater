@@ -12,7 +12,7 @@ import { SheetDateFormatter, StatusMapper, createWorkItem } from '../js/model.js
 import { createFilters, createUiState, hasAnyFilter, recomputeDerived } from '../js/state.js';
 import * as chipOrder from '../js/chipOrder.js';
 import { createRepository, filterRowsForProfile } from '../js/repository.js';
-import { buildReportHtml, reportTitle } from '../js/report.js';
+import { REPORT_CSS, buildReportBody, buildReportHtml, reportTitle } from '../js/report.js';
 import { createWorksViewModel } from '../js/viewmodel.js';
 
 const tests = [];
@@ -476,6 +476,32 @@ test('report groups every status and marks empty groups NIL', () => {
   assert.equal((html.match(/nil-row/g) || []).length, 6);
   assert.ok(html.includes('Total number of works: 5'));
   assert.ok(html.includes('@page { size: A3 landscape; margin: 1cm; }'));
+});
+
+test('the report body carries the whole report, for the in-page print view', () => {
+  const body = buildReportBody(works(), profileById('AD'), 'Hanzel H. Fernandez');
+  assert.ok(body.startsWith('<div class="report-root">'));
+  assert.ok(!body.includes('<!DOCTYPE'), 'the body is injected into the app page, not a document');
+  assert.equal((body.match(/class="status-group-row"/g) || []).length, 9);
+  assert.equal((body.match(/nil-row/g) || []).length, 6);
+  assert.ok(body.includes('Total number of works: 5'));
+});
+
+test('report CSS is fully scoped so it cannot leak into the app when injected', () => {
+  // Every rule must be scoped to .report-root. A bare `body`/`table`/`td` rule here would
+  // restyle the whole dashboard the moment the print view is added to the page.
+  const selectors = REPORT_CSS.split('}')
+    .map((block) => block.split('{')[0].trim())
+    .filter((selector) => selector !== '' && !selector.startsWith('@'));
+  assert.ok(selectors.length > 5, 'expected the report stylesheet to have rules');
+  for (const selector of selectors) {
+    for (const part of selector.split(',')) {
+      assert.ok(
+        part.trim().startsWith('.report-root'),
+        `unscoped selector would leak into the app: ${part.trim()}`,
+      );
+    }
+  }
 });
 
 test('report escapes HTML and blanks become dashes', () => {

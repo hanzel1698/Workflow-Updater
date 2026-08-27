@@ -61,7 +61,7 @@ office intranet share) works the same way.
 | Engineer profile switcher, set-default star, active check | ✅ | |
 | Read-only work detail: Overview, Approvals, Building, Timeline, Remarks, Additional Information | ✅ | Unknown sheet columns still surface under Additional Information |
 | Sheet dates shown as `DD/MM/YYYY` in Asia/Kolkata | ✅ | ISO instants are converted before the date is read, so the day never slips |
-| Export grouped **A3 landscape PDF** report, named after the engineer | ✅ | Goes through the browser's print dialog → "Save as PDF" (Android uses `PrintManager`) |
+| Export grouped **A3 landscape PDF** report, named after the engineer | ✅ | The report is rendered into the page behind a print stylesheet, then `window.print()` → "Save as PDF" (Android uses `PrintManager`). Not an iframe: a 0×0 iframe is never laid out and prints blank |
 | Offline: last synced sheet is reopened without network | ✅ | Snapshot in `localStorage`; app shell cached by a service worker |
 | Offline banner with last-synced time | ✅ | |
 | Pull to refresh | ✅ | Plus a refresh button in the top bar, since desktop browsers have no pull gesture |
