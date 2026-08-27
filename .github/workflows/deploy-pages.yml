@@ -1,0 +1,63 @@
+name: Deploy GitHub Pages
+
+# Publishes docs/ as the site:
+#   /        privacy policy (the URL registered with Google Play)
+#   /app/    editable dashboard, synced from windows/
+#   /works/  read-only works viewer
+#
+# Required because Pages > Source is set to "GitHub Actions"; with that setting the
+# automatic branch build does not run, so this workflow is the only deployer.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy docs/ to Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify the site is complete
+        run: |
+          set -euo pipefail
+          for required in \
+            docs/index.html \
+            docs/app/index.html \
+            docs/works/index.html \
+            docs/works/js/main.js \
+            docs/works/sw.js
+          do
+            test -f "$required" || { echo "::error::missing $required"; exit 1; }
+          done
+          grep -q 'Privacy Policy' docs/index.html || { echo "::error::privacy policy missing from the site root"; exit 1; }
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
