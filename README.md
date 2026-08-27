@@ -6,19 +6,37 @@ Custom dashboard frontend for the RDO KKD Google Sheets workflow tracker.
 
 | Folder | Purpose |
 |--------|---------|
-| `windows/` | Desktop/web app (HTML/CSS/JS), Python local server, and EXE build scripts |
-| `android/` | Android WebView app that bundles the same dashboard for mobile |
-| `docs/` | GitHub Pages site — privacy policy at the root, hosted serverless web app in `docs/app/` |
+| `windows/` | Desktop dashboard (HTML/CSS/JS) with editing, Python local server, and EXE build scripts |
+| `android/` | Native Android app (Jetpack Compose) for viewing works on mobile |
+| `docs/` | GitHub Pages site — privacy policy at the root, plus both web apps (`docs/app/`, `docs/works/`) |
 | `scripts/` | Shared maintenance scripts |
 
-The **canonical web source** lives in `windows/`. After editing those files, sync the copies:
+The **canonical source** for the editable dashboard lives in `windows/`. After editing those files,
+sync the copies:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\sync-android-assets.ps1   # Android assets
 python3 scripts/sync-web-assets.py                                           # docs/app web app
 ```
 
-## Web app (no server)
+## Two web apps
+
+The Pages site hosts both, for two different jobs:
+
+| URL | What it is | Source |
+|-----|------------|--------|
+| [`/app/`](https://hanzel1698.github.io/Workflow-Updater/app/) | **Editable dashboard** — the full `windows/` workspace in the browser: add and edit works, calendar, analytics, Excel export | Synced from `windows/` |
+| [`/works/`](https://hanzel1698.github.io/Workflow-Updater/works/) | **Read-only works viewer** — the Android app's feature set, built for a phone in the field: search, status chips, filters, A3 PDF report | `docs/works/` |
+
+Both read the same Google Sheet through the same Apps Script Web App, and both work offline once
+loaded. Use `/app/` at a desk when you need to change something; use `/works/` on a phone when you
+only need to look something up.
+
+`/works/` and `android/` are read-only viewers that share the same engineer roster, design-status
+rules and PDF report — when those change, update `windows/config.js`, `docs/works/js/config.js` and
+`android/.../data/SheetConfig.kt` together.
+
+## Editable web app (no server)
 
 `docs/app/` is the same dashboard built to run entirely in the browser — no Python, no Node, no
 backend. It calls the Google Apps Script Web App directly, so publishing it is nothing more than
@@ -72,11 +90,31 @@ python3 scripts/generate-web-icons.py
 Files owned by the web build and never overwritten by the sync: `web-boot.js` (settings, offline
 cache, install prompt), `sw.js`, `manifest.webmanifest`, `icons/`.
 
+## Read-only works viewer
+
+`docs/works/` is a browser build of the **Android** app rather than the desktop dashboard: the same
+works list, search, design-status chips, filters, engineer profiles, detail view and A3 PDF report,
+and no editing at all. It is mobile-first, installs to a home screen, and opens offline from the
+last synced sheet.
+
+It has no build step and no sync script — the folder is the app, published straight from `docs/`.
+To run it locally, double-click `docs\works\Launch Web App.bat` (or
+`powershell -ExecutionPolicy Bypass -File .\docs\works\start_server.ps1`), which serves `docs/`
+at <http://localhost:8080/works/> so local paths match the live site.
+
+```bash
+node docs/works/tests/run-tests.mjs        # logic tests, no dependencies
+python3 scripts/generate-works-icons.py    # only if the icon artwork changes
+```
+
+See [`docs/works/README.md`](docs/works/README.md) for the full feature-parity table against the
+Android app.
+
 ## Windows app
 
 **Quick start:** double-click `Launch Dashboard.bat` at the repo root (or `windows\Launch Dashboard.bat`).
 This starts a local Python/Node server because browsers block live sheet access from `file://`. To
-skip that entirely, use the hosted [web app](#web-app-no-server) instead.
+skip that entirely, use the hosted [web apps](#two-web-apps) instead.
 
 **Standalone EXE:**
 

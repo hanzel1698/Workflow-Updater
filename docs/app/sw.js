@@ -11,6 +11,8 @@ const BUILD = '1617caa87b';
 const SHELL_CACHE = `wu-shell-${BUILD}`;
 const FONT_CACHE = `wu-fonts-${BUILD}`;
 const KEEP = [SHELL_CACHE, FONT_CACHE];
+// Other apps share this origin (and therefore this cache storage), so only reap our own.
+const CACHE_PREFIX = 'wu-';
 
 const SHELL_ASSETS = [
   './',
@@ -43,7 +45,11 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => !KEEP.includes(key)).map((key) => caches.delete(key)))
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith(CACHE_PREFIX) && !KEEP.includes(key))
+            .map((key) => caches.delete(key))
+        )
       )
       .then(() => self.clients.claim())
   );

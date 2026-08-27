@@ -1,0 +1,10 @@
+{
+  "versionCode": 8,
+  "versionName": "3.0.0",
+  "title": "What's New",
+  "features": [
+    "The full read-only works dashboard now runs in any browser, on phone or desktop",
+    "Install it to your home screen and open it offline using the last synced sheet data",
+    "Search, design-status chips, filters, engineer profiles and A3 PDF export all work the same as the app"
+  ]
+}
