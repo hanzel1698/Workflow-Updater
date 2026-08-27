@@ -1,11 +1,11 @@
-# start_server.ps1 - RDO KKD Works web app launcher
-# Serves web/ over HTTP so ES modules, the service worker and the live sheet fetch all work.
+# start_server.ps1 - RDO KKD Works launcher
+# Serves the docs/ folder so the app runs at /works/, exactly as it does on GitHub Pages.
 # (Opening index.html straight off disk is blocked by the browser's file:// security policy.)
 
 $HostPort = 8080
-$Url = "http://localhost:$HostPort"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $ScriptDir
+$Url = "http://localhost:$HostPort/works/"
+$SiteRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+Set-Location $SiteRoot
 
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host "          RDO KKD Works - Web App" -ForegroundColor Cyan

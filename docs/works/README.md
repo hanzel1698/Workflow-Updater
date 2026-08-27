@@ -1,21 +1,27 @@
-# RDO KKD Works — web app
+# RDO KKD Works — read-only web app
 
 A read-only browser build of the Android app (`android/`), feature-for-feature. Same Google Sheet,
 same Apps Script endpoint, same engineer roster, same design-status rules and the same A3 PDF report.
 
-Static HTML/CSS/ES modules — no build step, no dependencies, no bundler.
+Static HTML/CSS/ES modules — no build step, no dependencies, no bundler. This folder *is* the
+published app; there is no sync script and no second copy.
+
+Not to be confused with `docs/app/`, the browser build of the **editable** `windows/` dashboard.
+That one is for changing works at a desk; this one is for looking them up on a phone.
 
 ## Run it
 
+Double-click `Launch Web App.bat`, or:
+
 ```powershell
-cd web
 powershell -ExecutionPolicy Bypass -File .\start_server.ps1
 ```
 
-or double-click `Launch Web App.bat`. Any static server works:
+Either serves the `docs/` folder at <http://localhost:8080/works/>, so local paths match the live
+site. Any static server works, as long as you serve `docs/` rather than this folder:
 
 ```bash
-cd web && python3 -m http.server 8080   # then open http://localhost:8080
+python3 -m http.server 8080 --directory docs   # then open http://localhost:8080/works/
 ```
 
 It must be served over HTTP, not opened from disk — ES modules, the service worker and the live
@@ -23,23 +29,21 @@ sheet fetch are all blocked on `file://`.
 
 ## Published site
 
-`.github/workflows/deploy-pages.yml` publishes this folder to GitHub Pages on every push to
-`master` that touches `docs/` or `web/`:
+GitHub Pages serves `docs/` from `master`, so a merge publishes this folder as-is:
 
 | URL | Source |
 |---|---|
-| `https://hanzel1698.github.io/Workflow-Updater/` | `docs/` — the privacy policy URL registered with Google Play |
-| `https://hanzel1698.github.io/Workflow-Updater/app/` | this folder |
+| `https://hanzel1698.github.io/Workflow-Updater/` | `docs/index.html` — the privacy policy URL registered with Google Play |
+| `https://hanzel1698.github.io/Workflow-Updater/app/` | `docs/app/` — the editable dashboard |
+| `https://hanzel1698.github.io/Workflow-Updater/works/` | this folder |
 
-`web/` stays the only copy — the workflow assembles the site at build time, so there is nothing to
-sync by hand. Developer-only files (`tests/`, `README.md`, the launcher scripts) are left out of the
-published site.
+Every asset path here is relative, so the app runs from the `/works/` subdirectory with no
+base-path rewriting: service worker scope, manifest `start_url` and icons all resolve correctly.
 
-The app is served from a subdirectory, and every asset path in it is relative, so no base-path
-rewriting is needed. It is marked `noindex` because the sheet it reads is office-internal: the URL
-works for anyone who has it, but it stays out of search results. Nothing server-side is required —
-the browser talks to the Apps Script Web App directly, exactly as the phone does. Any other static
-host (Netlify, an office intranet share) works the same way.
+It is marked `noindex` because the sheet it reads is office-internal: the URL works for anyone who
+has it, but it stays out of search results. Nothing server-side is required — the browser talks to
+the Apps Script Web App directly, exactly as the phone does. Any other static host (Netlify, an
+office intranet share) works the same way.
 
 ## Feature parity with the Android app
 
@@ -88,7 +92,7 @@ Each module names the Kotlin file it was ported from, so the two clients can be 
 ## Tests
 
 ```bash
-node web/tests/run-tests.mjs
+node docs/works/tests/run-tests.mjs
 ```
 
 No dependencies. Covers status mapping, date formatting, profile filtering, derived state and
@@ -97,7 +101,8 @@ report — the same ground as `android/app/src/test/`.
 
 ## Keeping it in sync with the app
 
-When the sheet, roster or status rules change, update **both** `android/.../data/SheetConfig.kt`
-and `web/js/config.js`. When shipping a release, update `web/release_notes.json` alongside
-`android/whats_new.md`, keeping `versionCode` equal to `APP_VERSION_CODE` in `web/js/config.js`
-(the What's New screen only shows notes that match the build it ships with).
+When the sheet, roster or status rules change, update `android/.../data/SheetConfig.kt`,
+`docs/works/js/config.js` and `windows/config.js` together. When shipping a release, update
+`docs/works/release_notes.json` alongside `android/whats_new.md`, keeping `versionCode` equal to
+`APP_VERSION_CODE` in `docs/works/js/config.js` (the What's New screen only shows notes that match
+the build it ships with).

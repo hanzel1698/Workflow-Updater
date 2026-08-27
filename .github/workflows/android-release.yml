@@ -3,6 +3,11 @@ name: Android Release Build
 on:
   push:
     branches: [main, master]
+    # The published web apps ship no Android code, so they must not cut a release.
+    # Deliberately narrow: android/whats_new.md feeds the What's New screen, so
+    # markdown is NOT ignored here.
+    paths-ignore:
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:

@@ -4,7 +4,10 @@
  * snapshot written by js/cache.js, so a stale sheet response is never served from here.
  */
 
-const CACHE_NAME = 'rdo-kkd-works-v1';
+// Namespaced because the editable dashboard at /app/ shares this origin — and therefore this
+// cache storage. Each app must only ever reap its own generations.
+const CACHE_PREFIX = 'rdo-kkd-works-';
+const CACHE_NAME = `${CACHE_PREFIX}v1`;
 
 const APP_SHELL = [
   './',
@@ -57,7 +60,13 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+            .map((key) => caches.delete(key)),
+        ),
+      )
       .then(() => self.clients.claim()),
   );
 });
