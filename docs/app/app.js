@@ -2605,10 +2605,14 @@ function renderAnalytics() {
       styleBar = 'background: linear-gradient(135deg, hsl(350, 89%, 55%), hsl(350, 89%, 65%)); box-shadow: 0 0 10px -2px hsla(350, 89%, 60%, 0.3);';
     }
     
+    // The bar sits in a track of its own so its percentage height has a definite box to measure
+    // against, and the count rides at `bottom: <same %>` so it floats just above the bar's top.
     return `
       <div class="bar-chart-bar-wrapper">
-        <span class="bar-chart-value">${count}</span>
-        <div class="bar-chart-bar" style="height: ${heightPercentage}%; max-height: 100%; ${styleBar}" title="${fullText}: ${count} works"></div>
+        <div class="bar-chart-bar-track">
+          <div class="bar-chart-bar" style="height: ${heightPercentage}%; ${styleBar}" title="${fullText}: ${count} works"></div>
+          <span class="bar-chart-value" style="bottom: ${heightPercentage}%">${count}</span>
+        </div>
         <span class="bar-chart-label" title="${fullText}">${label}</span>
       </div>
     `;

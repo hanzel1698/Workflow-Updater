@@ -1839,7 +1839,9 @@ header {
 .bar-chart-container {
   height: 180px;
   display: flex;
-  align-items: flex-end;
+  /* Must stretch: with flex-end the columns were content-sized, so the bars' percentage heights
+     had no definite box to resolve against and every one collapsed to its min-height. */
+  align-items: stretch;
   justify-content: space-between;
   padding: 1rem 0.5rem;
   border-bottom: 1px solid var(--border-color);
@@ -1854,8 +1856,20 @@ header {
   position: relative;
   min-width: 0;
 }
+/* Whatever height the label leaves is the bar's 100%. */
+.bar-chart-bar-track {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  align-items: flex-end;
+  justify-content: center;
+}
 .bar-chart-bar {
-  width: 20px;
+  /* Scales with its column so the bars stay readable on a wide monitor, capped so they keep
+     clear air between them; on a phone the 60% still works out near the old fixed 20px. */
+  width: min(60%, 44px);
   background: var(--gradient-accent);
   border-radius: 4px 4px 0 0;
   min-height: 2px;
@@ -1873,8 +1887,13 @@ header {
   color: var(--text-primary);
   opacity: 0;
   transition: opacity var(--transition-fast);
+  /* `bottom` is set inline to the bar's own height, so the count tracks the top of its bar. */
   position: absolute;
-  top: -15px;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 4px;
+  pointer-events: none;
 }
 .bar-chart-bar-wrapper:hover .bar-chart-value {
   opacity: 1;
