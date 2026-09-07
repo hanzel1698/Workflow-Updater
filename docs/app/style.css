@@ -49,6 +49,12 @@
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* The floating Add button, and the room the page has to leave so that nothing ends up
+     stranded underneath it once there is no scroll left. */
+  --fab-size: 56px;
+  --fab-inset: 2rem;
+  --fab-clearance: calc(var(--fab-inset) + var(--fab-size) + 1rem);
 }
 
 * {
@@ -91,7 +97,10 @@ body {
 .app-container {
   max-width: 1440px;
   margin: 0 auto;
-  padding: 2rem;
+  /* The extra bottom padding is the FAB's: without it the last thing on the page sits under the
+     button with no scroll left to move it out, which hid a chart bar, a calendar day and a status
+     header depending on the view. */
+  padding: 2rem 2rem var(--fab-clearance);
   display: flex;
   flex-direction: column;
   gap: 2rem;
@@ -1256,12 +1265,12 @@ header {
 /* Floating Action Button (FAB) for adding items */
 .fab {
   position: fixed;
-  bottom: 2rem;
-  left: 2rem;
+  bottom: var(--fab-inset);
+  left: var(--fab-inset);
   background: var(--gradient-accent);
   color: white;
-  width: 56px;
-  height: 56px;
+  width: var(--fab-size);
+  height: var(--fab-size);
   border-radius: 50%;
   border: none;
   cursor: pointer;
@@ -1341,7 +1350,23 @@ header {
 
 @media (max-width: 768px) {
   .app-container {
-    padding: 1rem;
+    /* Tighter side gutters, but the FAB still needs its room at the bottom. There is no width
+       to spare for side clearance on a phone, so the button floats over the list as it should
+       and the page simply scrolls far enough to bring anything out from under it. */
+    padding: 1rem 1rem var(--fab-clearance);
+  }
+  /* A 400px toast anchored 32px from the right runs off the left of a 412px phone and lands on
+     the FAB, and it takes pointer events with it — so it blocked the button it covered. Sit it
+     above the FAB and let it use the width it actually has. */
+  .toast-container {
+    left: 1rem;
+    right: 1rem;
+    bottom: var(--fab-clearance);
+    align-items: stretch;
+  }
+  .toast {
+    min-width: 0;
+    max-width: 100%;
   }
   header {
     flex-direction: column;
@@ -2247,9 +2272,16 @@ header {
    on a phone, a tablet, or a narrowed window.
    ========================================================================== */
 
+/*
+ * The 4rem side gutter is the FAB's doing. On the default 1440px layout the button sat in the
+ * empty margin beside the column; now that the container reaches the window edges, the gutter
+ * plus a card's own 1.5rem padding is what keeps the button clear of card text — it ends 88px
+ * in, and text starts at 64 + 24. Clearing the whole button instead would cost a column off the
+ * KPI row on a 1366 laptop, and a button overlapping a card's edge is what a floating button is.
+ */
 :root[data-device='desktop'] .app-container {
   max-width: none;
-  padding: 2rem clamp(2rem, 3vw, 4rem);
+  padding: 2rem 4rem var(--fab-clearance);
 }
 
 /*
