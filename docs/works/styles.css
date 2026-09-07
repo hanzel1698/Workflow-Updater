@@ -417,14 +417,11 @@ button { font-family: inherit; }
 .mini-pill-value { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
 
 .work-remarks {
-  display: -webkit-box;
   margin: 0.625rem 0 0;
-  overflow: hidden;
   color: var(--text-secondary);
   font-size: 0.78rem;
   line-height: 1.4;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .work-card-footer {
