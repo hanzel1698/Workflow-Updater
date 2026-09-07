@@ -1289,6 +1289,24 @@ header {
   width: 24px;
   height: 24px;
 }
+/* Scrolled down: slide clear off the bottom edge. Set by setupFabScrollBehavior() in app.js.
+   Deliberately still focusable — a keyboard user tabbing to it brings it straight back. */
+.fab.fab-hidden {
+  transform: translateY(var(--fab-clearance));
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Fade rather than travel, and drop the hover lift with it. */
+  .fab {
+    transition: opacity var(--transition-fast);
+  }
+  .fab:hover,
+  .fab.fab-hidden {
+    transform: none;
+  }
+}
 
 /* Responsive Breakpoints */
 @media (max-width: 900px) {

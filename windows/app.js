@@ -563,6 +563,47 @@ function setupUIThemeAndDropdowns() {
   applyDropdownOptionsToForms();
 }
 
+/**
+ * Slide the Add button away while the page is scrolled down, and bring it back on the way up.
+ *
+ * A phone has no width to give the button a lane of its own, so it floats over the list;
+ * stepping aside while you read is how it stops covering anything. It stays in the tab order
+ * while hidden and reappears on focus, so it is never lost to a keyboard.
+ */
+function setupFabScrollBehavior() {
+  const fab = dom.openAddModalBtn;
+  if (!fab) return;
+
+  const HIDE_BELOW_PX = 120; // stay put while the top of the page is still in view
+  const DEADZONE_PX = 8; // ignore trackpad jitter and rubber-band bounce
+
+  let lastY = window.scrollY;
+  let queued = false;
+
+  function apply() {
+    queued = false;
+    const y = Math.max(window.scrollY, 0);
+    const delta = y - lastY;
+    if (Math.abs(delta) < DEADZONE_PX) return;
+    lastY = y;
+    // Never pull it out from under a keyboard user who is on it.
+    const hide = delta > 0 && y > HIDE_BELOW_PX && document.activeElement !== fab;
+    fab.classList.toggle('fab-hidden', hide);
+  }
+
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(apply);
+    },
+    { passive: true },
+  );
+
+  fab.addEventListener('focus', () => fab.classList.remove('fab-hidden'));
+}
+
 // Attach event listeners
 function setupEventListeners() {
   // Sync button
@@ -647,6 +688,8 @@ function setupEventListeners() {
       onFilterChange();
     });
   }
+
+  setupFabScrollBehavior();
 
   // Add Modal Toggles
   dom.openAddModalBtn.addEventListener('click', () => {
