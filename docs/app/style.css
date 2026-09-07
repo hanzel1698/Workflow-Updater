@@ -2218,6 +2218,44 @@ header {
   color: var(--color-success);
 }
 
+/* ==========================================================================
+   Desktop PC
+
+   `data-device` is stamped on <html> by the gate at the top of app.js once it has established
+   the dashboard is on a mouse-driven PC with a window at least 900px wide. The default layout
+   is a 1440px column centred in the window, which leaves a 4K monitor more than half empty;
+   here the dashboard spans the window instead. Everything below is additive — nothing changes
+   on a phone, a tablet, or a narrowed window.
+   ========================================================================== */
+
+:root[data-device='desktop'] .app-container {
+  max-width: none;
+  padding: 2rem clamp(2rem, 3vw, 4rem);
+}
+
+/*
+ * Card rows are horizontal: a status column, the work and its chips, then the target and Edit
+ * Details. They read well from about 900px, so a window with room for two comfortable rows gets
+ * two — twice the works on screen — and anything narrower keeps one row that is simply wider
+ * than before, which leaves more of the remarks visible before they are truncated.
+ */
+:root[data-device='desktop'] .status-group-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(980px, 1fr));
+  align-content: start;
+}
+
+/*
+ * The edit sheet is a form beside a timeline; both columns want the extra width. Only on a
+ * monitor with room to spare, though — at 1366 or 1440 a 1200px sheet all but fills the window,
+ * and a modal that reaches the edges stops reading as a modal.
+ */
+@media (min-width: 1700px) {
+  :root[data-device='desktop'] .modal-window {
+    max-width: 1200px;
+  }
+}
+
 /* Print Formatting Rules */
 @media print {
   body {

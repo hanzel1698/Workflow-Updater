@@ -25,7 +25,7 @@ The Pages site hosts both, for two different jobs:
 
 | URL | What it is | Source |
 |-----|------------|--------|
-| [`/app/`](https://hanzel1698.github.io/Workflow-Updater/app/) | **Editable dashboard** — the full `windows/` workspace in the browser: add and edit works, calendar, analytics, Excel export | Synced from `windows/` |
+| [`/app/`](https://hanzel1698.github.io/Workflow-Updater/app/) | **Editable dashboard** — the full `windows/` workspace in the browser: add and edit works, calendar, analytics, Excel export. On a desktop PC it uses the whole window rather than a 1440px column | Synced from `windows/` |
 | [`/works/`](https://hanzel1698.github.io/Workflow-Updater/works/) | **Read-only works viewer** — the Android app's feature set, built for a phone in the field: search, status chips, filters, A3 PDF report. Opened on a desktop PC it uses the whole window instead of a phone column | `docs/works/` |
 
 Both read the same Google Sheet through the same Apps Script Web App, and both work offline once
@@ -68,6 +68,31 @@ What the web build adds on top of `windows/`:
 
 URL options: `?demo=1` loads the bundled sample data (handy for showing the app without the sheet),
 `?profile=ASE01` opens a specific engineer profile.
+
+### Desktop screen real estate
+
+The dashboard defaults to a 1440px column centred in the window, which leaves a 4K monitor more
+than half empty. A gate at the top of `windows/app.js` works out whether it is running on a desktop
+PC and, if so, stamps `data-device="desktop"` on `<html>`; `windows/style.css` opens the layout out
+from there. Because it lives in `windows/`, both the local dashboard and `/app/` get it.
+
+A desktop PC means **a mouse-driven machine with a window at least 900px wide** — not just a big
+screen. `navigator.userAgentData.mobile` vetoes outright, and `(hover: hover) and (pointer: fine)`
+is the deciding test, which keeps tablets in landscape (iPadOS included, where Safari sends a Mac
+user-agent string) on the normal layout. It is re-checked on resize and when the pointer changes.
+
+What the extra room buys:
+
+- **The dashboard spans the window** — at 2560px the KPI cards fit on one row instead of two, and
+  the filters, calendar and analytics panels all widen with it.
+- **Wider work rows** — at 1920px a row goes from 1376px to about 1800px, which is usually the
+  difference between a truncated remark and the whole one.
+- **Two columns of work rows** once there is room for two comfortable ones (about 2000px of
+  container), so a 4K monitor shows twice as many works.
+- **A roomier edit sheet** above 1700px, where the form and its timeline both have space.
+
+Nothing changes on a phone, a tablet, or a narrowed window — the rules are additive and keyed to
+`data-device="desktop"`.
 
 ### Rebuilding the web app
 

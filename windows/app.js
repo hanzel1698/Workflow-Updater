@@ -3,6 +3,44 @@
  * Handles state, fetch/sync, profile-filtering, searching, and optimistic updates.
  */
 
+/**
+ * Desktop-PC layout gate.
+ *
+ * Stamps `data-device="desktop"` or `"compact"` on <html> so style.css can hand a mouse-driven PC
+ * the whole window instead of the centred 1440px column. A desktop PC means a fine pointer and a
+ * window at least 900px wide — not merely a big screen, so a tablet in landscape keeps the compact
+ * layout, iPadOS included (Safari there sends a Mac user-agent string, but still a coarse pointer).
+ *
+ * Runs at parse time rather than on DOMContentLoaded so the layout is settled before the first
+ * paint. Same rules as docs/works/js/ui/deviceLayout.js — keep the two in step.
+ */
+(function gateDesktopLayout() {
+  const DESKTOP_MIN_WIDTH = 900;
+  const query =
+    typeof window.matchMedia === 'function' ? window.matchMedia('(hover: hover) and (pointer: fine)') : null;
+
+  function isDesktopPc() {
+    // Chromium tells us outright; nothing else can overrule it.
+    if (window.navigator.userAgentData && window.navigator.userAgentData.mobile === true) return false;
+    if ((window.innerWidth || 0) < DESKTOP_MIN_WIDTH) return false;
+    // No pointer media queries (pre-2015 browsers): a window this wide with no touch digitizer is a PC.
+    if (!query) return (window.navigator.maxTouchPoints || 0) === 0;
+    return query.matches;
+  }
+
+  function update() {
+    document.documentElement.dataset.device = isDesktopPc() ? 'desktop' : 'compact';
+  }
+
+  update();
+  window.addEventListener('resize', update, { passive: true });
+  if (query) {
+    // Safari before 14 only has the deprecated listener API.
+    if (query.addEventListener) query.addEventListener('change', update);
+    else if (query.addListener) query.addListener(update);
+  }
+})();
+
 const CONFIG = window.CONFIG;
 
 // Application State
