@@ -42,6 +42,9 @@
 
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Horizontal breathing room around content; widened on a desktop PC. */
+  --gutter: 1rem;
 }
 
 /* Light fallback, matching the Android app's light color scheme. */
@@ -196,7 +199,7 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin: 0.25rem 1rem;
+  margin: 0.25rem var(--gutter);
   padding: 0 0.875rem;
   border-radius: var(--radius-lg);
   background: var(--bg-card);
@@ -228,10 +231,10 @@ button { font-family: inherit; }
   display: flex;
   flex: 1;
   gap: 0.5rem;
-  padding: 0.25rem 0.5rem 0.25rem 1rem;
+  padding: 0.25rem 0.5rem 0.25rem var(--gutter);
   overflow-x: auto;
   scrollbar-width: none;
-  scroll-padding-inline: 1rem;
+  scroll-padding-inline: var(--gutter);
 }
 
 .chips-scroller::-webkit-scrollbar { display: none; }
@@ -285,7 +288,7 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin: 0 1rem;
+  margin: 0 var(--gutter);
   padding: 0.625rem 0.875rem;
   border-radius: 12px;
   background: var(--secondary-container);
@@ -298,7 +301,7 @@ button { font-family: inherit; }
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  margin: 0 1rem;
+  margin: 0 var(--gutter);
   padding: 0.75rem;
   border-radius: var(--radius-sm);
   background: var(--bg-card-elevated);
@@ -326,7 +329,7 @@ button { font-family: inherit; }
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 0.5rem 1rem calc(6rem + var(--safe-bottom));
+  padding: 0.5rem var(--gutter) calc(6rem + var(--safe-bottom));
 }
 
 .refresh-indicator { display: flex; justify-content: center; padding: 0.5rem 0; }
@@ -503,7 +506,7 @@ button { font-family: inherit; }
 
 /* ---------- Detail screen ---------- */
 
-.detail-body { padding: 0.5rem 1rem 3rem; }
+.detail-body { padding: 0.5rem var(--gutter) 3rem; }
 
 .detail-status-header {
   display: flex;
@@ -835,8 +838,80 @@ button { font-family: inherit; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
-/* Desktop: give the list a little more breathing room. */
+/* Tablets and split-screen windows: give the list a little more breathing room. */
 @media (min-width: 700px) {
   .works-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; }
   .works-list .state-block { grid-column: 1 / -1; }
 }
+
+/* ---------- Desktop PC ---------- */
+
+/*
+ * `data-device` is stamped on <html> by js/ui/deviceLayout.js once it has established the app is
+ * on a mouse-driven PC with a window wide enough to spread into. The phone layout is a centred
+ * 900px column; here the app spans the whole window and the list grows a column for every ~340px
+ * of it, so a wide monitor shows many more works without scrolling.
+ */
+
+:root[data-device='desktop'] {
+  --gutter: clamp(1.25rem, 2.2vw, 3rem);
+}
+
+:root[data-device='desktop'] .screen { max-width: none; }
+
+/* Prose gates keep a readable measure — a full-width paragraph is harder to read, not better. */
+:root[data-device='desktop'] .gate-screen { max-width: 760px; }
+
+:root[data-device='desktop'] .app-bar {
+  padding-right: calc(var(--gutter) - 0.25rem);
+  padding-left: calc(var(--gutter) - 0.25rem);
+}
+
+:root[data-device='desktop'] .chips-row { padding-right: var(--gutter); }
+/* A search box the width of a monitor reads as a banner; keep it a field. */
+:root[data-device='desktop'] .search-field { max-width: 640px; }
+
+/*
+ * Wide enough for both: search moves up beside the KPI chips, giving the list a row's worth of
+ * extra height. Below this the chips keep the full width to themselves — they only scroll
+ * sideways, which is an awkward gesture with a mouse, so they should not have to.
+ */
+@media (min-width: 1600px) {
+  :root[data-device='desktop'] .main-controls { flex-flow: row wrap; align-items: center; }
+  :root[data-device='desktop'] .search-field { flex: 0 1 380px; margin-right: 0; }
+  :root[data-device='desktop'] .chips-row { flex: 1 1 420px; min-width: 0; }
+  :root[data-device='desktop'] .chips-scroller { padding-left: 0.75rem; }
+  /* Full-width lines of their own; they read as banners, not as controls beside the search box. */
+  :root[data-device='desktop'] .filter-result-chip,
+  :root[data-device='desktop'] .offline-banner { flex: 1 1 100%; }
+}
+
+:root[data-device='desktop'] .works-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  align-content: start;
+}
+
+:root[data-device='desktop'] .works-list .state-block { grid-column: 1 / -1; }
+
+/*
+ * The detail view is a stack of short sections — side by side, a whole work fits on one screen
+ * with no scrolling. Columns rather than a grid: grid rows are as tall as their tallest section,
+ * which would leave a void beside every short one, while columns let the sections flow on.
+ */
+:root[data-device='desktop'] .detail-body {
+  columns: 380px;
+  column-gap: 1.5rem;
+}
+
+:root[data-device='desktop'] .detail-section {
+  -webkit-column-break-inside: avoid;
+  break-inside: avoid;
+}
+
+:root[data-device='desktop'] .detail-status-header,
+:root[data-device='desktop'] .detail-title,
+:root[data-device='desktop'] .detail-body > .state-block { column-span: all; }
+
+/* The FAB was centred against the 900px column; now it follows the window edge. */
+:root[data-device='desktop'] .fab { right: var(--gutter); }

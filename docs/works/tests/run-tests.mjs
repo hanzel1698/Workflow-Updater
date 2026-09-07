@@ -14,6 +14,7 @@ import * as chipOrder from '../js/chipOrder.js';
 import { createRepository, filterRowsForProfile } from '../js/repository.js';
 import { REPORT_CSS, buildReportBody, buildReportHtml, reportTitle } from '../js/report.js';
 import { createWorksViewModel } from '../js/viewmodel.js';
+import { DESKTOP_MIN_WIDTH, applyDesktopLayout, isDesktopEnvironment } from '../js/ui/deviceLayout.js';
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -513,6 +514,71 @@ test('report escapes HTML and blanks become dashes', () => {
   assert.ok(html.includes('&lt;script&gt;&amp;&quot;'));
   assert.ok(!html.includes('<script>&"'));
   assert.ok(html.includes('<td class="center">-</td>'));
+});
+
+/* ---------------- Desktop detection (deviceLayout.js) ---------------- */
+
+test('a wide mouse-driven window is a desktop PC', () => {
+  assert.equal(
+    isDesktopEnvironment({ viewportWidth: 1920, finePointer: true, mobileHint: false, maxTouchPoints: 0 }),
+    true,
+  );
+  // Touchscreen laptops still report a fine primary pointer.
+  assert.equal(
+    isDesktopEnvironment({ viewportWidth: 1440, finePointer: true, mobileHint: false, maxTouchPoints: 10 }),
+    true,
+  );
+});
+
+test('phones and tablets keep the compact layout', () => {
+  // Phone: narrow and coarse.
+  assert.equal(isDesktopEnvironment({ viewportWidth: 412, finePointer: false, mobileHint: true }), false);
+  // Tablet in landscape: wide enough, but finger-driven.
+  assert.equal(isDesktopEnvironment({ viewportWidth: 1180, finePointer: false, maxTouchPoints: 5 }), false);
+  // iPadOS Safari sends a Mac user-agent string; the pointer check is what catches it.
+  assert.equal(isDesktopEnvironment({ viewportWidth: 1024, finePointer: false, mobileHint: null }), false);
+});
+
+test('the mobile client hint overrules a wide window', () => {
+  assert.equal(isDesktopEnvironment({ viewportWidth: 1600, finePointer: true, mobileHint: true }), false);
+});
+
+test('a PC window narrowed below the threshold falls back to the compact layout', () => {
+  assert.equal(isDesktopEnvironment({ viewportWidth: DESKTOP_MIN_WIDTH, finePointer: true }), true);
+  assert.equal(isDesktopEnvironment({ viewportWidth: DESKTOP_MIN_WIDTH - 1, finePointer: true }), false);
+});
+
+test('without pointer media queries, no touch digitizer means a PC', () => {
+  assert.equal(isDesktopEnvironment({ viewportWidth: 1280, finePointer: null, maxTouchPoints: 0 }), true);
+  assert.equal(isDesktopEnvironment({ viewportWidth: 1280, finePointer: null, maxTouchPoints: 5 }), false);
+});
+
+test('nothing known at all is treated as compact', () => {
+  assert.equal(isDesktopEnvironment(), false);
+});
+
+test('applyDesktopLayout stamps <html> and re-checks when the window is resized', () => {
+  const listeners = { resize: [], change: [] };
+  const root = { dataset: {} };
+  const view = {
+    innerWidth: 1600,
+    document: { documentElement: root },
+    navigator: { maxTouchPoints: 0 },
+    matchMedia: () => ({
+      matches: true,
+      addEventListener: (_type, handler) => listeners.change.push(handler),
+    }),
+    addEventListener: (type, handler) => listeners[type].push(handler),
+  };
+
+  applyDesktopLayout(view);
+  assert.equal(root.dataset.device, 'desktop');
+
+  view.innerWidth = 700;
+  for (const handler of listeners.resize) handler();
+  assert.equal(root.dataset.device, 'compact', 'a narrowed window goes back to the phone layout');
+
+  assert.equal(listeners.change.length, 1, 'pointer changes (docking a tablet) re-run the check');
 });
 
 /* ---------------- Runner ---------------- */

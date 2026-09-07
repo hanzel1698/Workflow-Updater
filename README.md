@@ -26,7 +26,7 @@ The Pages site hosts both, for two different jobs:
 | URL | What it is | Source |
 |-----|------------|--------|
 | [`/app/`](https://hanzel1698.github.io/Workflow-Updater/app/) | **Editable dashboard** — the full `windows/` workspace in the browser: add and edit works, calendar, analytics, Excel export | Synced from `windows/` |
-| [`/works/`](https://hanzel1698.github.io/Workflow-Updater/works/) | **Read-only works viewer** — the Android app's feature set, built for a phone in the field: search, status chips, filters, A3 PDF report | `docs/works/` |
+| [`/works/`](https://hanzel1698.github.io/Workflow-Updater/works/) | **Read-only works viewer** — the Android app's feature set, built for a phone in the field: search, status chips, filters, A3 PDF report. Opened on a desktop PC it uses the whole window instead of a phone column | `docs/works/` |
 
 Both read the same Google Sheet through the same Apps Script Web App, and both work offline once
 loaded. Use `/app/` at a desk when you need to change something; use `/works/` on a phone when you
@@ -96,6 +96,11 @@ cache, install prompt), `sw.js`, `manifest.webmanifest`, `icons/`.
 works list, search, design-status chips, filters, engineer profiles, detail view and A3 PDF report,
 and no editing at all. It is mobile-first, installs to a home screen, and opens offline from the
 last synced sheet.
+
+It also knows when it has been opened on a desktop PC — a mouse-driven machine with a window at
+least 900px wide, so tablets and half-screen windows are not mistaken for one — and then drops the
+phone column for the full window: a works grid that grows a column per ~340px, and a detail view
+that fits on one screen. See [`docs/works/README.md`](docs/works/README.md#opened-on-a-desktop-pc).
 
 It has no build step and no sync script — the folder is the app, published straight from `docs/`.
 To run it locally, double-click `docs\works\Launch Web App.bat` (or

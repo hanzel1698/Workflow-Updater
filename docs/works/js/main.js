@@ -6,6 +6,7 @@
 import { ProfilePrefs } from './prefs.js';
 import { createRepository } from './repository.js';
 import { createWorksViewModel } from './viewmodel.js';
+import { applyDesktopLayout } from './ui/deviceLayout.js';
 import { createDefaultProfileSetupScreen } from './ui/setupScreen.js';
 import { createDetailScreen } from './ui/detailScreen.js';
 import { createMainScreen } from './ui/mainScreen.js';
@@ -17,6 +18,9 @@ import {
 } from './ui/whatsNew.js';
 
 const appRoot = document.getElementById('app');
+
+// Decide phone column vs. full-window desktop before the first screen is mounted.
+applyDesktopLayout();
 
 function mount(screen) {
   appRoot.replaceChildren(screen.root);

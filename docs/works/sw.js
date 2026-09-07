@@ -7,7 +7,7 @@
 // Namespaced because the editable dashboard at /app/ shares this origin — and therefore this
 // cache storage. Each app must only ever reap its own generations.
 const CACHE_PREFIX = 'rdo-kkd-works-';
-const CACHE_NAME = `${CACHE_PREFIX}v1`;
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
 
 const APP_SHELL = [
   './',
@@ -30,6 +30,7 @@ const APP_SHELL = [
   './js/viewmodel.js',
   './js/ui/chips.js',
   './js/ui/detailScreen.js',
+  './js/ui/deviceLayout.js',
   './js/ui/dialog.js',
   './js/ui/dom.js',
   './js/ui/exportDialog.js',

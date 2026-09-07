@@ -67,9 +67,41 @@ office intranet share) works the same way.
 | Pull to refresh | ✅ | Plus a refresh button in the top bar, since desktop browsers have no pull gesture |
 | Sample data when there is no network and no cache | ✅ | |
 | Installable to the home screen | ✅ | Web app manifest + icons; Android ships as an APK |
+| — | ➕ | **Desktop layout**: on a PC the app drops the phone column and uses the whole window (see below). The Android app has no equivalent |
 
 The web app is read-only, like the Android app: no add, edit or delete. For editing, use the
 desktop dashboard in `windows/`.
+
+## Opened on a desktop PC
+
+The phone layout is a 900px column, which wastes most of a monitor. `js/ui/deviceLayout.js` works
+out whether the app is on a desktop PC and, if it is, stamps `data-device="desktop"` on `<html>`;
+`styles.css` opens the layout out from there. Nothing changes on a phone.
+
+A desktop PC means **a mouse-driven machine with a window at least 900px wide** — not just a big
+screen:
+
+| Signal | Effect |
+|---|---|
+| `navigator.userAgentData.mobile` is true | Never desktop, whatever else says |
+| Window narrower than 900px | Compact — a half-screen window on a PC is phone-shaped, and gets the phone layout |
+| `(hover: hover) and (pointer: fine)` | The deciding test: a mouse or trackpad, not a finger. Keeps tablets in landscape — and iPadOS, which sends a Mac user-agent string — on the compact layout |
+| No pointer media queries at all | Falls back to "no touch digitizer and a wide window" |
+
+It is re-checked on resize and when the pointer changes, so shrinking a window or docking a tablet
+switches layouts live. What the desktop layout does with the extra room:
+
+- **Works list** — one column per ~340px of window, so a 1080p monitor shows around 15 works at
+  once instead of 3, and a 4K one more again.
+- **Work details** — sections flow into columns (`columns`, not a grid, so a short section leaves
+  no void beside it); a whole work usually fits on one screen with no scrolling.
+- **Search and KPI chips share a row** above 1600px, which buys the list another row of cards.
+  Below that the chips keep the full width, so they never have to be scrolled sideways with a
+  mouse.
+- **Wider gutters** and a floating action button that follows the window edge rather than the
+  vanished column.
+- **The What's New and profile gates keep a readable measure** — full width helps a list, not a
+  paragraph.
 
 ## Layout
 
@@ -84,6 +116,7 @@ desktop dashboard in `windows/`.
 | `js/viewmodel.js` | Screen state and the actions that change it |
 | `js/report.js` | A3 landscape PDF report HTML |
 | `js/ui/` | Screens, sheets, dialogs, chips, cards |
+| `js/ui/deviceLayout.js` | Desktop-PC detection; stamps `data-device` on `<html>` for the desktop layout |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Offline app shell and installability |
 | `tests/run-tests.mjs` | Logic tests mirroring the Android unit tests |
 
@@ -96,8 +129,8 @@ node docs/works/tests/run-tests.mjs
 ```
 
 No dependencies. Covers status mapping, date formatting, profile filtering, derived state and
-cascading filter options, chip ordering, repository fallbacks, view-model actions and the PDF
-report — the same ground as `android/app/src/test/`.
+cascading filter options, chip ordering, repository fallbacks, view-model actions, desktop-PC
+detection and the PDF report — the same ground as `android/app/src/test/`.
 
 ## Keeping it in sync with the app
 
