@@ -15,6 +15,13 @@ import java.util.Locale
  */
 object PdfReportBuilder {
 
+  /**
+   * Columns in the report table. The NIL row's filler cells are counted from this rather than
+   * written out by hand: a row one cell short leaves the last column with no cell at all, and
+   * an absent cell draws no borders, so the printed table ends in a gap.
+   */
+  private const val COLUMN_COUNT = 14
+
   fun reportTitle(designation: String, engineerName: String, date: String = todayFormatted()): String =
     "PROGRESS REPORT - ${designation.trim().uppercase(Locale.ROOT)} - ${engineerName.trim()} - AS ON $date."
 
@@ -26,14 +33,15 @@ object PdfReportBuilder {
       SheetConfig.STATUS_OPTIONS.forEach { status ->
         val groupWorks = grouped[status].orEmpty()
         val suffix = if (groupWorks.size == 1) "WORK" else "WORKS"
-        append("<tr class=\"status-group-row\"><td colspan=\"14\">")
+        append("<tr class=\"status-group-row\"><td colspan=\"$COLUMN_COUNT\">")
         append(escapeHtml("${status.uppercase(Locale.ROOT)} : ${groupWorks.size} $suffix"))
         append("</td></tr>")
 
         if (groupWorks.isEmpty()) {
           append(
             "<tr class=\"nil-row\"><td style=\"color:#94a3b8;font-style:italic;font-weight:500;font-size:8.5pt;padding:8px;\">NIL</td>" +
-              "<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>",
+              "<td></td>".repeat(COLUMN_COUNT - 1) +
+              "</tr>",
           )
           return@forEach
         }

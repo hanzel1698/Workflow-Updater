@@ -93,6 +93,13 @@ export const REPORT_CSS = `
 /** Page setup for the grouped report: A3 landscape, matching the Android print job. */
 export const REPORT_PAGE_CSS = '@page { size: A3 landscape; margin: 1cm; }';
 
+/**
+ * Columns in the report table. The NIL row's filler cells are counted from this rather than
+ * written out by hand: a row one cell short leaves the last column with no cell at all, and
+ * an absent cell draws no borders, so the printed table ends in a gap.
+ */
+const COLUMN_COUNT = 14;
+
 /** The report itself, without any surrounding document. */
 export function buildReportBody(works, profile, engineerName) {
   const title = reportTitle(profile.id, engineerName);
@@ -101,7 +108,7 @@ export function buildReportBody(works, profile, engineerName) {
     const groupWorks = works.filter((work) => work.status === status);
     const suffix = groupWorks.length === 1 ? 'WORK' : 'WORKS';
     const heading =
-      `<tr class="status-group-row"><td colspan="14">` +
+      `<tr class="status-group-row"><td colspan="${COLUMN_COUNT}">` +
       `${escapeHtml(`${status.toUpperCase()} : ${groupWorks.length} ${suffix}`)}` +
       `</td></tr>`;
 
@@ -109,7 +116,8 @@ export function buildReportBody(works, profile, engineerName) {
       return (
         heading +
         '<tr class="nil-row"><td style="color:#94a3b8;font-style:italic;font-weight:500;font-size:8.5pt;padding:8px;">NIL</td>' +
-        '<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>'
+        '<td></td>'.repeat(COLUMN_COUNT - 1) +
+        '</tr>'
       );
     }
 

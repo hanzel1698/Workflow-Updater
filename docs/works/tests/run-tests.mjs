@@ -488,6 +488,28 @@ test('the report body carries the whole report, for the in-page print view', () 
   assert.ok(body.includes('Total number of works: 5'));
 });
 
+test('every report row fills all 14 columns, so no cell loses its borders', () => {
+  // A row one cell short leaves the last column with no cell at all in that row, and a cell that
+  // is not there draws no borders — the printed table then ends in a gap.
+  const body = buildReportBody(works(), profileById('AD'), 'Hanzel H. Fernandez');
+  const headerCells = (body.match(/<th[\s>]/g) || []).length;
+  assert.equal(headerCells, 14);
+  assert.equal((body.match(/<col[\s>]/g) || []).length, 14);
+
+  for (const row of body.match(/<tr[\s\S]*?<\/tr>/g) || []) {
+    if (row.includes('<th')) continue;
+    const spans = [...row.matchAll(/<td(?:\s[^>]*)?>/g)].map((match) => {
+      const colspan = /colspan="(\d+)"/.exec(match[0]);
+      return colspan ? Number(colspan[1]) : 1;
+    });
+    assert.equal(
+      spans.reduce((total, span) => total + span, 0),
+      headerCells,
+      `row does not span every column: ${row}`,
+    );
+  }
+});
+
 test('report CSS is fully scoped so it cannot leak into the app when injected', () => {
   // Every rule must be scoped to .report-root. A bare `body`/`table`/`td` rule here would
   // restyle the whole dashboard the moment the print view is added to the page.
