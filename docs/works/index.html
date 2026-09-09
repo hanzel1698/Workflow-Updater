@@ -8,13 +8,26 @@
   <!-- Office-internal tool: reachable by URL, but kept out of search results. -->
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#0A0912" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#F7F6FB" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#F5F4FA" media="(prefers-color-scheme: light)">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="RDO KKD Works">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
   <link rel="stylesheet" href="./styles.css">
+  <script>
+    /*
+     * Applies a stored theme before the first paint, so a light-theme user never sees a dark
+     * flash behind the loading spinner. The key and the button live in js/ui/theme.js — this has
+     * to run here because ES modules are deferred until after the document is parsed.
+     */
+    try {
+      var wuTheme = localStorage.getItem('wu.theme');
+      if (wuTheme === 'light' || wuTheme === 'dark') document.documentElement.dataset.theme = wuTheme;
+    } catch (err) {
+      /* private mode — the system preference still applies */
+    }
+  </script>
 </head>
 <body>
   <div id="app">

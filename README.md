@@ -109,9 +109,13 @@ The mapping lives in three places that must stay in step:
 | Works viewer | `docs/works/js/ui/statusTone.js` |
 | Android | `android/.../ui/common/StatusColors.kt` |
 
-Both themes are real: the dashboard defaults to the operating system's preference and the header's
-sun/moon button overrides it, storing the choice under `wu.theme`. A gate at the top of
-`windows/app.js` applies a stored theme before first paint, so there is no flash of the wrong one.
+Both themes are real in both apps: each defaults to the operating system's preference, and a
+sun/moon button overrides it. The choice is stored under `wu.theme` — and because the two apps are
+served from the same origin, choosing light in one chooses it in the other. Each applies a stored
+theme before its first paint, so there is no flash of the wrong one: the dashboard from a gate at
+the top of `windows/app.js`, the viewer from a short inline script in `docs/works/index.html`
+(ES modules are deferred, so the button's own module in `docs/works/js/ui/theme.js` would be too
+late to beat the paint).
 
 ### Rebuilding the web app
 

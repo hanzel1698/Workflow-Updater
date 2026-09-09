@@ -1,22 +1,30 @@
 /*
- * Violet-accented dark theme ported from android/.../theme/Color.kt, Theme.kt, Type.kt and Shape.kt
- * (which in turn mirror the glassmorphic look of windows/style.css).
+ * Violet-accented theme ported from android/.../theme/Color.kt, Theme.kt, Type.kt and Shape.kt.
+ *
+ * The same design language as the editable dashboard (windows/style.css): one violet accent, five
+ * semantic status tones applied through `data-tone`, one radius scale, flat surfaces layered by
+ * lightness rather than by shadow — elevation is kept for things that genuinely float above the
+ * page (the FAB, sheets, dialogs, toasts). The two web apps are one product and should read as one.
  */
 
 :root {
-  color-scheme: dark light;
+  color-scheme: dark;
 
   --bg-app: #0a0912;
   --bg-surface: #120f1e;
   --bg-card: #181428;
   --bg-card-elevated: #1f1a33;
   --border-subtle: rgba(200, 196, 224, 0.1);
+  --border-strong: rgba(200, 196, 224, 0.18);
+  /* On a dark ground a card separates by its own lightness; on a light one it needs an edge. */
+  --card-border: transparent;
 
   --text-primary: #f8fafc;
   --text-secondary: #aeb4cc;
   --text-muted: #767e9c;
 
   --accent: #a07cf0;
+  --accent-strong: #b294f5;
   --accent-soft: rgba(160, 124, 240, 0.18);
   --on-accent: #ffffff;
 
@@ -40,42 +48,117 @@
   --radius-lg: 20px;
   --radius-xl: 28px;
 
+  --shadow-float: 0 12px 32px -12px rgba(0, 0, 0, 0.65);
+  --shadow-overlay: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
+
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
   /* Horizontal breathing room around content; widened on a desktop PC. */
   --gutter: 1rem;
+  /* The Export button floats over the list; this is how far it sits from the corner. */
+  --fab-inset: 1rem;
+
+  /*
+   * Light theme, matching the Android app's light color scheme. Declared here and *applied* by
+   * the two rules below, so an explicit choice and the system preference share one definition
+   * instead of drifting apart.
+   */
+  --light-bg-app: #f5f4fa;
+  --light-bg-surface: #ffffff;
+  --light-bg-card: #ffffff;
+  --light-bg-card-elevated: #f1eff8;
+  --light-border-subtle: rgba(28, 24, 48, 0.12);
+  --light-border-strong: rgba(28, 24, 48, 0.2);
+  --light-card-border: rgba(28, 24, 48, 0.09);
+  --light-text-primary: #171326;
+  --light-text-secondary: #4c4763;
+  --light-text-muted: #6b6684;
+  --light-accent: #5b3fa8;
+  --light-accent-strong: #4c3684;
+  --light-accent-soft: rgba(91, 63, 168, 0.13);
+  --light-secondary-container: #e7e2f6;
+  --light-on-secondary-container: #2c2547;
+  --light-tone-success: #0f7a54;
+  --light-tone-success-bg: #d7f2e6;
+  --light-tone-warning: #8a5d05;
+  --light-tone-warning-bg: #fbeecd;
+  --light-tone-danger: #ab2540;
+  --light-tone-danger-bg: #fbdde3;
+  --light-tone-info: #10607f;
+  --light-tone-info-bg: #d6eefa;
+  --light-tone-neutral: #4f5670;
+  --light-tone-neutral-bg: #e6e7ef;
+  --light-shadow-float: 0 10px 28px -12px rgba(28, 24, 48, 0.28);
+  --light-shadow-overlay: 0 24px 60px -20px rgba(28, 24, 48, 0.35);
 }
 
-/* Light fallback, matching the Android app's light color scheme. */
+/*
+ * `data-theme` is set by the app bar's theme button and stored under the same key the dashboard
+ * uses — both apps share an origin, so choosing light in one chooses it in the other. With no
+ * stored choice the app follows the operating system.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg-app: var(--light-bg-app);
+  --bg-surface: var(--light-bg-surface);
+  --bg-card: var(--light-bg-card);
+  --bg-card-elevated: var(--light-bg-card-elevated);
+  --border-subtle: var(--light-border-subtle);
+  --border-strong: var(--light-border-strong);
+  --card-border: var(--light-card-border);
+  --text-primary: var(--light-text-primary);
+  --text-secondary: var(--light-text-secondary);
+  --text-muted: var(--light-text-muted);
+  --accent: var(--light-accent);
+  --accent-strong: var(--light-accent-strong);
+  --accent-soft: var(--light-accent-soft);
+  --secondary-container: var(--light-secondary-container);
+  --on-secondary-container: var(--light-on-secondary-container);
+  --tone-success: var(--light-tone-success);
+  --tone-success-bg: var(--light-tone-success-bg);
+  --tone-warning: var(--light-tone-warning);
+  --tone-warning-bg: var(--light-tone-warning-bg);
+  --tone-danger: var(--light-tone-danger);
+  --tone-danger-bg: var(--light-tone-danger-bg);
+  --tone-info: var(--light-tone-info);
+  --tone-info-bg: var(--light-tone-info-bg);
+  --tone-neutral: var(--light-tone-neutral);
+  --tone-neutral-bg: var(--light-tone-neutral-bg);
+  --shadow-float: var(--light-shadow-float);
+  --shadow-overlay: var(--light-shadow-overlay);
+}
+
 @media (prefers-color-scheme: light) {
-  :root {
-    --bg-app: #f7f6fb;
-    --bg-surface: #ffffff;
-    --bg-card: #ffffff;
-    --bg-card-elevated: #f1eff8;
-    --border-subtle: rgba(28, 24, 48, 0.12);
-
-    --text-primary: #171326;
-    --text-secondary: #4c4763;
-    --text-muted: #6b6684;
-
-    --accent: #4c3684;
-    --accent-soft: rgba(76, 54, 132, 0.14);
-
-    --tone-success: #0f7a54;
-    --tone-success-bg: #d7f2e6;
-    --tone-warning: #8a5d05;
-    --tone-warning-bg: #fbeecd;
-    --tone-danger: #ab2540;
-    --tone-danger-bg: #fbdde3;
-    --tone-info: #10607f;
-    --tone-info-bg: #d6eefa;
-    --tone-neutral: #4f5670;
-    --tone-neutral-bg: #e6e7ef;
-
-    --secondary-container: #e7e2f6;
-    --on-secondary-container: #2c2547;
+  :root:not([data-theme='dark']):not([data-theme='light']) {
+    color-scheme: light;
+    --bg-app: var(--light-bg-app);
+    --bg-surface: var(--light-bg-surface);
+    --bg-card: var(--light-bg-card);
+    --bg-card-elevated: var(--light-bg-card-elevated);
+    --border-subtle: var(--light-border-subtle);
+    --border-strong: var(--light-border-strong);
+    --card-border: var(--light-card-border);
+    --text-primary: var(--light-text-primary);
+    --text-secondary: var(--light-text-secondary);
+    --text-muted: var(--light-text-muted);
+    --accent: var(--light-accent);
+    --accent-strong: var(--light-accent-strong);
+    --accent-soft: var(--light-accent-soft);
+    --secondary-container: var(--light-secondary-container);
+    --on-secondary-container: var(--light-on-secondary-container);
+    --tone-success: var(--light-tone-success);
+    --tone-success-bg: var(--light-tone-success-bg);
+    --tone-warning: var(--light-tone-warning);
+    --tone-warning-bg: var(--light-tone-warning-bg);
+    --tone-danger: var(--light-tone-danger);
+    --tone-danger-bg: var(--light-tone-danger-bg);
+    --tone-info: var(--light-tone-info);
+    --tone-info-bg: var(--light-tone-info-bg);
+    --tone-neutral: var(--light-tone-neutral);
+    --tone-neutral-bg: var(--light-tone-neutral-bg);
+    --shadow-float: var(--light-shadow-float);
+    --shadow-overlay: var(--light-shadow-overlay);
   }
 }
 
@@ -98,6 +181,12 @@ body.modal-open { overflow: hidden; }
 
 button { font-family: inherit; }
 
+/* One focus treatment across the app, so keyboard use is never a guessing game. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 #app { height: 100%; }
 
 .screen {
@@ -116,8 +205,24 @@ button { font-family: inherit; }
   align-items: center;
   gap: 0.5rem;
   padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem 0.75rem;
+  border-bottom: 1px solid var(--card-border);
   background: var(--bg-surface);
 }
+
+/* The dashboard wears the same mark; on a shared origin the two apps should look related. */
+.brand-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.brand-mark svg { width: 19px; height: 19px; }
 
 .app-bar-titles { flex: 1; min-width: 0; }
 
@@ -169,6 +274,18 @@ button { font-family: inherit; }
 
 .refresh-btn.spinning svg { animation: spin 0.9s linear infinite; }
 
+/* Only one of the two glyphs is ever shown; which one depends on the resolved theme. */
+.theme-btn .icon-sun,
+.theme-btn .icon-moon { display: none; }
+.theme-btn .icon-sun { display: inline-flex; }
+:root[data-theme='light'] .theme-btn .icon-sun { display: none; }
+:root[data-theme='light'] .theme-btn .icon-moon { display: inline-flex; }
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']):not([data-theme='light']) .theme-btn .icon-sun { display: none; }
+  :root:not([data-theme='dark']):not([data-theme='light']) .theme-btn .icon-moon { display: inline-flex; }
+}
+
 .filter-badge {
   position: absolute;
   top: 4px;
@@ -201,9 +318,13 @@ button { font-family: inherit; }
   gap: 0.5rem;
   margin: 0.25rem var(--gutter);
   padding: 0 0.875rem;
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
   background: var(--bg-card);
+  transition: border-color 0.15s ease;
 }
+
+.search-field:focus-within { border-color: var(--accent); }
 
 .search-icon { display: inline-flex; color: var(--text-secondary); }
 .search-icon svg { width: 20px; height: 20px; }
@@ -221,7 +342,6 @@ button { font-family: inherit; }
 
 .search-input::placeholder { color: var(--text-muted); }
 .search-input:focus { outline: none; }
-.search-field:focus-within { box-shadow: 0 0 0 2px var(--accent-soft); }
 
 /* ---------- Status chips ---------- */
 
@@ -246,7 +366,7 @@ button { font-family: inherit; }
   align-items: flex-start;
   gap: 2px;
   padding: 0.5rem 0.875rem;
-  border: 0;
+  border: 1px solid var(--card-border);
   border-radius: 14px;
   background: var(--bg-card);
   color: var(--text-secondary);
@@ -303,6 +423,7 @@ button { font-family: inherit; }
   gap: 0.5rem;
   margin: 0 var(--gutter);
   padding: 0.75rem;
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-sm);
   background: var(--bg-card-elevated);
   color: var(--text-secondary);
@@ -336,14 +457,17 @@ button { font-family: inherit; }
 .pull-armed .refresh-indicator { opacity: 1; }
 
 .work-card {
+  display: flex;
+  flex-direction: column;
   padding: 1rem;
+  border: 1px solid var(--card-border);
   border-radius: 18px;
   background: var(--bg-card);
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 
-.work-card:hover { background: var(--bg-card-elevated); }
+.work-card:hover { border-color: var(--border-strong); background: var(--bg-card-elevated); }
 .work-card:active { transform: scale(0.995); }
 .work-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -428,11 +552,16 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 0.625rem;
+  padding-top: 0.625rem;
+  margin-top: auto;
+  border-top: 1px solid var(--border-subtle);
   color: var(--accent);
   font-size: 0.75rem;
   font-weight: 500;
 }
+
+/* Everything above the footer is the card's content; the footer takes the slack. */
+.work-card > .work-remarks { margin-bottom: 0.625rem; }
 
 .work-card-footer .chevron svg { width: 18px; height: 18px; }
 
@@ -462,8 +591,8 @@ button { font-family: inherit; }
 
 .fab {
   position: fixed;
-  right: max(1rem, calc(50vw - 450px + 1rem));
-  bottom: calc(1rem + var(--safe-bottom));
+  right: max(var(--fab-inset), calc(50vw - 450px + var(--fab-inset)));
+  bottom: calc(var(--fab-inset) + var(--safe-bottom));
   z-index: 20;
   display: inline-flex;
   align-items: center;
@@ -472,17 +601,31 @@ button { font-family: inherit; }
   border: 0;
   border-radius: var(--radius-md);
   background: var(--accent);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-float);
   color: var(--on-accent);
   cursor: pointer;
   font-size: 0.875rem;
   font-weight: 600;
+  transition: background 0.15s ease, transform 0.2s ease, opacity 0.2s ease;
 }
 
-.fab:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.fab:hover { background: var(--accent-strong); }
+.fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .fab-icon { display: inline-flex; }
 .fab-icon svg { width: 20px; height: 20px; }
 .fab.busy { opacity: 0.85; cursor: progress; }
+
+/*
+ * Scrolled down, the button steps aside: a phone has no width to give it a lane of its own, so
+ * it floats over the list and would otherwise sit on the card you are reading. Set by
+ * attachFabScrollBehavior() in js/ui/mainScreen.js. It stays in the tab order while hidden and
+ * comes straight back on focus, so a keyboard never loses it.
+ */
+.fab.fab-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(100% + var(--fab-inset) + var(--safe-bottom)));
+}
 
 /* ---------- Spinners ---------- */
 
@@ -509,7 +652,7 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  padding: 0.625rem 0.875rem;
+  padding: 0.75rem 1rem;
   border-radius: 14px;
 }
 
@@ -530,6 +673,7 @@ button { font-family: inherit; }
 
 .detail-card {
   padding: 0 0.875rem;
+  border: 1px solid var(--card-border);
   border-radius: 14px;
   background: var(--bg-card);
 }
@@ -663,9 +807,11 @@ button { font-family: inherit; }
 .scrim {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(6, 4, 14, 0.66);
   opacity: 0;
   transition: opacity 0.2s ease;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
 }
 
 .sheet-root.open .scrim,
@@ -680,8 +826,11 @@ button { font-family: inherit; }
   margin: 0 auto;
   max-width: 900px;
   padding: 0.5rem 1.25rem calc(1.25rem + var(--safe-bottom));
+  border: 1px solid var(--card-border);
+  border-bottom: 0;
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
   display: flex;
   flex-direction: column;
   transform: translateY(100%);
@@ -763,8 +912,14 @@ button { font-family: inherit; }
 }
 
 .filled-btn.block { width: 100%; }
-.filled-btn:focus-visible,
-.text-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.filled-btn:hover:not(:disabled) { background: var(--accent-strong); }
+
+/* Disabled means "not yet" — it has to look unavailable without disappearing. */
+.filled-btn:disabled {
+  background: var(--bg-card-elevated);
+  color: var(--text-muted);
+  cursor: default;
+}
 
 .dialog {
   position: absolute;
@@ -772,8 +927,10 @@ button { font-family: inherit; }
   left: 50%;
   width: min(420px, calc(100vw - 2.5rem));
   padding: 1.5rem;
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
-  background: var(--bg-card-elevated);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
   transform: translate(-50%, -48%);
   opacity: 0;
   transition: opacity 0.15s ease, transform 0.15s ease;
@@ -783,7 +940,9 @@ button { font-family: inherit; }
 
 .dialog-title { margin: 0 0 0.75rem; font-size: 1.25rem; font-weight: 600; }
 .dialog-text { margin: 0 0 0.75rem; color: var(--text-secondary); font-size: 0.875rem; line-height: 1.45; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
+.dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
+
+.dialog-actions .filled-btn { padding: 0.625rem 1.25rem; border-radius: var(--radius-md); }
 
 .text-field-label { display: block; margin-bottom: 0.25rem; color: var(--text-secondary); font-size: 0.75rem; }
 
@@ -799,6 +958,7 @@ button { font-family: inherit; }
 }
 
 .text-input:focus { border-color: var(--accent); outline: none; }
+.text-input:hover { border-color: var(--border-strong); }
 .text-input.invalid { border-color: var(--tone-danger); }
 
 /* ---------- Toast ---------- */
@@ -833,6 +993,30 @@ button { font-family: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  /* Fade rather than travel, so the button does not snap across the screen. */
+  .fab { transition: opacity 0.01ms !important; }
+  .fab.fab-hidden { transform: none; }
+}
+
+/*
+ * A narrow phone has four actions and a title to fit on one line. The mark is the decoration of
+ * the three, and the title is the app's name — so on a small screen the mark stands down rather
+ * than truncating "RDO KKD Works" to "RDO KKD W…". The 44px touch targets stay untouched.
+ */
+@media (max-width: 480px) {
+  .brand-mark { display: none; }
+}
+
+/*
+ * Narrower still, the four actions themselves have to give a little. They keep their full 44px
+ * height — the part a thumb actually has to hit — and lose only side padding, which buys the
+ * title back the room it needs to stay whole on a 360px phone.
+ */
+@media (max-width: 420px) {
+  .app-bar { padding-right: 0.5rem; padding-left: 0.5rem; gap: 0.25rem; }
+  .icon-btn { width: 40px; }
+  /* The last two points the title needs to stay whole rather than ellipsised. */
+  .app-bar-title { font-size: 1.12rem; }
 }
 
 /* Tablets and split-screen windows: give the list a little more breathing room. */
@@ -896,7 +1080,15 @@ button { font-family: inherit; }
  * with no scrolling. Columns rather than a grid: grid rows are as tall as their tallest section,
  * which would leave a void beside every short one, while columns let the sections flow on.
  */
+/*
+ * `width: 100%` is load-bearing: the body is a stretched flex item, and an auto inline margin on
+ * one of those turns off the stretch and shrink-wraps it to its content instead — which collapsed
+ * the whole detail view into a single 560px column.
+ */
 :root[data-device='desktop'] .detail-body {
+  width: 100%;
+  max-width: 1500px;
+  margin-inline: auto;
   columns: 380px;
   column-gap: 1.5rem;
 }

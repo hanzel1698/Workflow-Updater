@@ -16,6 +16,7 @@ import { jobNameFor, printReport } from './pdfExport.js';
 import { showToast } from './toast.js';
 import { workCard } from './workCard.js';
 import { attachPullToRefresh } from './pullToRefresh.js';
+import { createThemeToggle } from './theme.js';
 
 export function createMainScreen({ viewModel, onWorkClick }) {
   let state = viewModel.getState();
@@ -48,11 +49,17 @@ export function createMainScreen({ viewModel, onWorkClick }) {
   filterButton.append(filterBadge);
 
   const appBar = el('header', { className: 'app-bar' }, [
+    el('span', { className: 'brand-mark', html: Icons.apartment(), attrs: { 'aria-hidden': 'true' } }),
     el('div', { className: 'app-bar-titles' }, [
       el('h1', { className: 'app-bar-title', text: 'RDO KKD Works' }),
       subtitle,
     ]),
-    el('div', { className: 'app-bar-actions' }, [profileButton, refreshButton, filterButton]),
+    el('div', { className: 'app-bar-actions' }, [
+      createThemeToggle(),
+      profileButton,
+      refreshButton,
+      filterButton,
+    ]),
   ]);
 
   const searchInput = el('input', {
@@ -97,6 +104,7 @@ export function createMainScreen({ viewModel, onWorkClick }) {
   ]);
 
   attachPullToRefresh(scrollArea, () => viewModel.refresh());
+  attachFabScrollBehavior(scrollArea, exportFab);
 
   function onExportClick() {
     if (state.isExporting) return;
@@ -231,4 +239,43 @@ export function createMainScreen({ viewModel, onWorkClick }) {
   }
 
   return { root, render };
+}
+
+/**
+ * Slides the Export button away while the list is scrolled down, and brings it back on the way up.
+ *
+ * A phone has no width to give the button a lane of its own, so it floats over the works;
+ * stepping aside while you read is how it stops covering the card you are on. It stays in the tab
+ * order while hidden and reappears on focus, so it is never lost to a keyboard. Unlike the
+ * dashboard, the works list scrolls inside `.scroll-area` rather than the window.
+ */
+function attachFabScrollBehavior(scrollArea, fab) {
+  const HIDE_BELOW_PX = 120; // stay put while the top of the list is still in view
+  const DEADZONE_PX = 8; // ignore trackpad jitter and rubber-band bounce
+
+  let lastY = scrollArea.scrollTop;
+  let queued = false;
+
+  function apply() {
+    queued = false;
+    const y = Math.max(scrollArea.scrollTop, 0);
+    const delta = y - lastY;
+    if (Math.abs(delta) < DEADZONE_PX) return;
+    lastY = y;
+    // Never pull it out from under a keyboard user who is on it.
+    const hide = delta > 0 && y > HIDE_BELOW_PX && document.activeElement !== fab;
+    fab.classList.toggle('fab-hidden', hide);
+  }
+
+  scrollArea.addEventListener(
+    'scroll',
+    () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(apply);
+    },
+    { passive: true },
+  );
+
+  fab.addEventListener('focus', () => fab.classList.remove('fab-hidden'));
 }

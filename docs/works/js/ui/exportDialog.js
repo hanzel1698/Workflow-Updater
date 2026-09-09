@@ -40,8 +40,10 @@ export function showExportPdfNameDialog({ designation, onConfirm }) {
         attrs: { type: 'button' },
         on: { click: close },
       });
+      // Filled, so the confirming action is the one the eye lands on rather than one of two
+      // look-alike text buttons.
       confirmButton = el('button', {
-        className: 'text-btn primary',
+        className: 'filled-btn',
         text: 'Export',
         attrs: { type: 'button', disabled: 'true' },
         on: {

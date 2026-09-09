@@ -107,7 +107,7 @@ switches layouts live. What the desktop layout does with the extra room:
 
 | Path | Purpose |
 |---|---|
-| `index.html`, `styles.css` | App shell and the violet theme ported from the app's Compose theme |
+| `index.html`, `styles.css` | App shell, and the violet theme shared with the dashboard — one accent, five status tones applied through `data-tone`, one radius scale |
 | `js/config.js` | Sheet URL, spreadsheet id, engineer roster, statuses, column aliases, sample rows |
 | `js/model.js` | Row normalization, design-status mapping, `DD/MM/YYYY` date formatting |
 | `js/repository.js` | Apps Script fetch → profile filtering → cache/sample fallbacks |
@@ -117,6 +117,7 @@ switches layouts live. What the desktop layout does with the extra room:
 | `js/report.js` | A3 landscape PDF report HTML |
 | `js/ui/` | Screens, sheets, dialogs, chips, cards |
 | `js/ui/deviceLayout.js` | Desktop-PC detection; stamps `data-device` on `<html>` for the desktop layout |
+| `js/ui/theme.js` | The app bar's dark/light button; the stored choice is shared with `/app/` |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Offline app shell and installability |
 | `tests/run-tests.mjs` | Logic tests mirroring the Android unit tests |
 

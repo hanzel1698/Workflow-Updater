@@ -7,7 +7,7 @@
 // Namespaced because the editable dashboard at /app/ shares this origin — and therefore this
 // cache storage. Each app must only ever reap its own generations.
 const CACHE_PREFIX = 'rdo-kkd-works-';
-const CACHE_NAME = `${CACHE_PREFIX}v3`;
+const CACHE_NAME = `${CACHE_PREFIX}v4`;
 
 const APP_SHELL = [
   './',
@@ -43,6 +43,7 @@ const APP_SHELL = [
   './js/ui/setupScreen.js',
   './js/ui/sheet.js',
   './js/ui/statusTone.js',
+  './js/ui/theme.js',
   './js/ui/toast.js',
   './js/ui/whatsNew.js',
   './js/ui/workCard.js',
