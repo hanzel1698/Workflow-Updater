@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Workflow Updater - RDO KKD Dashboard</title>
   <meta name="description" content="A gorgeous, lightweight, and highly responsive custom UI dashboard for tracking RDO KKD works assigned to engineer AD.">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -56,48 +56,50 @@
     </header>
 
     <!--
-      KPI chips. One per design status plus a total; clicking one filters the list to it.
+      KPI chips. One per design status plus a total. They are a multi-select: clicking one adds
+      that status to the filter, clicking it again removes it, and the list shows the works
+      matching any picked chip. "All works" clears the selection.
       `data-tone` is the same status colour vocabulary the badges, calendar and chart use.
     -->
     <div class="stats-row" id="stats-row">
-      <section class="stats-grid" id="stats-container" aria-label="Filter works by design status">
-        <button type="button" class="stat-card" id="stat-total" data-tone="accent">
+      <section class="stats-grid" id="stats-container" aria-label="Filter works by design status. Several statuses can be picked at once">
+        <button type="button" class="stat-card" id="stat-total" aria-pressed="true" data-tone="accent">
           <span class="number">0</span>
           <span class="label">All works</span>
         </button>
-        <button type="button" class="stat-card" id="stat-01" data-tone="info">
+        <button type="button" class="stat-card" id="stat-01" aria-pressed="false" data-tone="info">
           <span class="number">0</span>
           <span class="label">Tentative Ongoing</span>
         </button>
-        <button type="button" class="stat-card" id="stat-02" data-tone="warning">
+        <button type="button" class="stat-card" id="stat-02" aria-pressed="false" data-tone="warning">
           <span class="number">0</span>
           <span class="label">Tentative On Hold</span>
         </button>
-        <button type="button" class="stat-card" id="stat-03" data-tone="success">
+        <button type="button" class="stat-card" id="stat-03" aria-pressed="false" data-tone="success">
           <span class="number">0</span>
           <span class="label">Tentative Issued</span>
         </button>
-        <button type="button" class="stat-card" id="stat-04" data-tone="info">
+        <button type="button" class="stat-card" id="stat-04" aria-pressed="false" data-tone="info">
           <span class="number">0</span>
           <span class="label">Detailed Ongoing</span>
         </button>
-        <button type="button" class="stat-card" id="stat-05" data-tone="warning">
+        <button type="button" class="stat-card" id="stat-05" aria-pressed="false" data-tone="warning">
           <span class="number">0</span>
           <span class="label">Detailed On Hold</span>
         </button>
-        <button type="button" class="stat-card" id="stat-06" data-tone="success">
+        <button type="button" class="stat-card" id="stat-06" aria-pressed="false" data-tone="success">
           <span class="number">0</span>
           <span class="label">Detailed Issued</span>
         </button>
-        <button type="button" class="stat-card" id="stat-07" data-tone="neutral">
+        <button type="button" class="stat-card" id="stat-07" aria-pressed="false" data-tone="neutral">
           <span class="number">0</span>
           <span class="label">File Not Opened</span>
         </button>
-        <button type="button" class="stat-card" id="stat-08" data-tone="danger">
+        <button type="button" class="stat-card" id="stat-08" aria-pressed="false" data-tone="danger">
           <span class="number">0</span>
           <span class="label">Discarded Work</span>
         </button>
-        <button type="button" class="stat-card" id="stat-09" data-tone="danger">
+        <button type="button" class="stat-card" id="stat-09" aria-pressed="false" data-tone="danger">
           <span class="number">0</span>
           <span class="label">Returned to Site</span>
         </button>
@@ -659,7 +661,7 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- Load JavaScript Files -->
-  <script src="config.js?v=17"></script>
-  <script src="app.js?v=17"></script>
+  <script src="config.js?v=18"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

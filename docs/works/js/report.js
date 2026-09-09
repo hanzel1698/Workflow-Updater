@@ -73,6 +73,13 @@ export const REPORT_CSS = `
   vertical-align: top;
   word-wrap: break-word;
 }
+.report-root .report-scope-note {
+  text-align: left;
+  font-size: 10pt;
+  font-weight: 600;
+  color: #334155;
+  margin: 4px 0 0 0;
+}
 .report-root .status-group-row {
   background-color: #e2e8f0 !important;
   font-weight: 700;
@@ -100,11 +107,26 @@ export const REPORT_PAGE_CSS = '@page { size: A3 landscape; margin: 1cm; }';
  */
 const COLUMN_COUNT = 14;
 
-/** The report itself, without any surrounding document. */
-export function buildReportBody(works, profile, engineerName) {
-  const title = reportTitle(profile.id, engineerName);
+/**
+ * The status groups the report prints, in canonical order.
+ *
+ * With design-status chips picked, the report covers exactly those statuses — every work in each
+ * one, and no group for a status that was filtered out. Printing "01 TENTATIVE DESIGN ONGOING :
+ * 0 WORKS / NIL" under a report the reader was told is about detailed design reads as a finding
+ * about the office rather than a consequence of the filter. With no chips picked, nothing is
+ * excluded, so every status is listed and the empty ones stay as NIL.
+ */
+function reportStatuses(statusCodes) {
+  if (statusCodes.length === 0) return STATUS_OPTIONS;
+  return STATUS_OPTIONS.filter((status) => statusCodes.includes(status.slice(0, 2)));
+}
 
-  const bodyRows = STATUS_OPTIONS.map((status) => {
+/** The report itself, without any surrounding document. */
+export function buildReportBody(works, profile, engineerName, { statusCodes = [] } = {}) {
+  const title = reportTitle(profile.id, engineerName);
+  const statuses = reportStatuses(statusCodes);
+
+  const bodyRows = statuses.map((status) => {
     const groupWorks = works.filter((work) => work.status === status);
     const suffix = groupWorks.length === 1 ? 'WORK' : 'WORKS';
     const heading =
@@ -124,9 +146,16 @@ export function buildReportBody(works, profile, engineerName) {
     return heading + groupWorks.map(taskRow).join('');
   }).join('');
 
+  // Naming the picked statuses keeps a narrowed report honest: without it a reader has no way to
+  // tell a report covering two statuses from one where the office happens to have works in two.
+  const scopeNote =
+    statuses.length === STATUS_OPTIONS.length
+      ? ''
+      : `\n  <p class="report-scope-note">Design status: ${escapeHtml(statuses.join('; '))}</p>`;
+
   return `<div class="report-root">
   <div class="header-container"><h1>${escapeHtml(title)}</h1></div>
-  <p class="total-works-summary">Total number of works: ${works.length}</p>
+  <p class="total-works-summary">Total number of works: ${works.length}</p>${scopeNote}
   <table>
     <colgroup>
       <col style="width: 350px" /><col style="width: 120px" /><col style="width: 100px" />
@@ -161,7 +190,7 @@ export function buildReportBody(works, profile, engineerName) {
 }
 
 /** The report as a complete, standalone printable document. */
-export function buildReportHtml(works, profile, engineerName) {
+export function buildReportHtml(works, profile, engineerName, options = {}) {
   const title = reportTitle(profile.id, engineerName);
   return `<!DOCTYPE html>
 <html>
@@ -179,7 +208,7 @@ export function buildReportHtml(works, profile, engineerName) {
   </style>
 </head>
 <body>
-${buildReportBody(works, profile, engineerName)}
+${buildReportBody(works, profile, engineerName, options)}
 </body>
 </html>`;
 }

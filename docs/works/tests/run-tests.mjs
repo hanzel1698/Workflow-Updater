@@ -130,7 +130,7 @@ test('search and status chip narrow the list', () => {
   assert.equal(bySearch.filteredWorks.length, 1);
   assert.equal(bySearch.filteredWorks[0].workName, 'Construction of Family Court - Kasargod');
 
-  const byStatus = recomputeDerived(baseState({ filters: createFilters({ statusCode: '07' }) }));
+  const byStatus = recomputeDerived(baseState({ filters: createFilters({ statusCodes: ['07'] }) }));
   assert.equal(byStatus.filteredWorks.length, 1);
 });
 
@@ -191,9 +191,29 @@ test('status counts come from the pool before the status chip is applied', () =>
   );
 
   // Picking a chip must not empty the other chips.
-  const withChip = recomputeDerived(baseState({ filters: createFilters({ statusCode: '07' }) }));
+  const withChip = recomputeDerived(baseState({ filters: createFilters({ statusCodes: ['07'] }) }));
   assert.equal(
     Object.values(withChip.statusCounts).reduce((sum, count) => sum + count, 0),
+    works().length,
+  );
+});
+
+test('picking several status chips widens the list to their union', () => {
+  const one = recomputeDerived(baseState({ filters: createFilters({ statusCodes: ['06'] }) }));
+  const other = recomputeDerived(baseState({ filters: createFilters({ statusCodes: ['07'] }) }));
+  const both = recomputeDerived(baseState({ filters: createFilters({ statusCodes: ['06', '07'] }) }));
+
+  assert.equal(both.filteredWorks.length, one.filteredWorks.length + other.filteredWorks.length);
+  assert.ok(both.filteredWorks.every((work) => work.statusCode === '06' || work.statusCode === '07'));
+
+  // No chip picked is "every status", not "no status".
+  assert.equal(recomputeDerived(baseState({ filters: createFilters({ statusCodes: [] }) })).filteredWorks.length, works().length);
+});
+
+test('status counts stay whole however many chips are picked', () => {
+  const state = recomputeDerived(baseState({ filters: createFilters({ statusCodes: ['06', '07'] }) }));
+  assert.equal(
+    Object.values(state.statusCounts).reduce((sum, count) => sum + count, 0),
     works().length,
   );
 });
@@ -201,7 +221,7 @@ test('status counts come from the pool before the status chip is applied', () =>
 test('hasAnyFilter tracks search, dropdowns and the status chip', () => {
   assert.equal(hasAnyFilter(baseState()), false);
   assert.equal(hasAnyFilter(baseState({ searchQuery: 'court' })), true);
-  assert.equal(hasAnyFilter(baseState({ filters: createFilters({ statusCode: '06' }) })), true);
+  assert.equal(hasAnyFilter(baseState({ filters: createFilters({ statusCodes: ['06'] }) })), true);
   assert.equal(hasAnyFilter(baseState({ filters: createFilters({ lac: 'Tarur' }) })), true);
 });
 
@@ -405,9 +425,30 @@ test('tapping the active status chip clears it', async () => {
   await viewModel.start();
 
   viewModel.onStatusChipSelected('06');
-  assert.equal(viewModel.getState().filters.statusCode, '06');
+  assert.deepEqual(viewModel.getState().filters.statusCodes, ['06']);
   viewModel.onStatusChipSelected('06');
-  assert.equal(viewModel.getState().filters.statusCode, null);
+  assert.deepEqual(viewModel.getState().filters.statusCodes, []);
+});
+
+test('status chips accumulate, toggle off individually, and All works clears them', async () => {
+  const prefs = stubPrefs();
+  const repository = createRepository({ remote: async () => ({ headers: [], rows: MOCK_ROWS }), localCache: null });
+  const viewModel = createWorksViewModel({ repository, prefs });
+  await viewModel.start();
+
+  viewModel.onStatusChipSelected('06');
+  viewModel.onStatusChipSelected('07');
+  assert.deepEqual(viewModel.getState().filters.statusCodes, ['06', '07'], 'a second chip adds, it does not replace');
+
+  // Kept in canonical order however they were tapped, so the report reads 01…09.
+  viewModel.onStatusChipSelected('01');
+  assert.deepEqual(viewModel.getState().filters.statusCodes, ['01', '06', '07']);
+
+  viewModel.onStatusChipSelected('06');
+  assert.deepEqual(viewModel.getState().filters.statusCodes, ['01', '07'], 'tapping a picked chip removes just that one');
+
+  viewModel.onStatusChipSelected(null);
+  assert.deepEqual(viewModel.getState().filters.statusCodes, [], 'All works clears the whole selection');
 });
 
 test('applying filters keeps the active status chip, clearing resets everything', async () => {
@@ -418,7 +459,7 @@ test('applying filters keeps the active status chip, clearing resets everything'
 
   viewModel.onStatusChipSelected('04');
   viewModel.applyFilters(createFilters({ district: '11 Kozhikode' }));
-  assert.equal(viewModel.getState().filters.statusCode, '04');
+  assert.deepEqual(viewModel.getState().filters.statusCodes, ['04']);
   assert.equal(viewModel.getState().filters.district, '11 Kozhikode');
 
   viewModel.onSearchQueryChange('mini');
@@ -426,7 +467,7 @@ test('applying filters keeps the active status chip, clearing resets everything'
   const cleared = viewModel.getState();
   assert.equal(cleared.searchQuery, '');
   assert.equal(cleared.filters.district, null);
-  assert.equal(cleared.filters.statusCode, null);
+  assert.deepEqual(cleared.filters.statusCodes, []);
 });
 
 test('chip order changes are persisted through prefs', async () => {
@@ -486,6 +527,32 @@ test('the report body carries the whole report, for the in-page print view', () 
   assert.equal((body.match(/class="status-group-row"/g) || []).length, 9);
   assert.equal((body.match(/nil-row/g) || []).length, 6);
   assert.ok(body.includes('Total number of works: 5'));
+});
+
+test('a multi-status report carries every picked status, and only those', () => {
+  const statusCodes = ['06', '07'];
+  const selected = recomputeDerived(baseState({ filters: createFilters({ statusCodes }) })).filteredWorks;
+  const body = buildReportBody(selected, profileById('AD'), 'Hanzel H. Fernandez', { statusCodes });
+
+  // Both picked groups are present and populated — neither is dropped in favour of the other.
+  assert.ok(body.includes('06 DETAILED DESIGN ISSUED : 2 WORKS'));
+  assert.ok(body.includes('07 FILE NOT YET OPENED : 1 WORK'));
+  assert.equal((body.match(/class="status-group-row"/g) || []).length, 2);
+  assert.equal((body.match(/nil-row/g) || []).length, 0, 'a picked status with works is never NIL');
+
+  // Every work of both statuses reaches the file.
+  assert.ok(body.includes('Total number of works: 3'));
+  for (const work of selected) assert.ok(body.includes(work.workName), `missing work: ${work.workName}`);
+
+  // The groups filtered out are absent, not printed as NIL.
+  assert.ok(!body.includes('01 TENTATIVE DESIGN ONGOING'));
+  assert.ok(body.includes('Design status: 06 Detailed Design Issued; 07 File Not Yet Opened'));
+});
+
+test('a report with no chips picked still lists every status, NIL included', () => {
+  const body = buildReportBody(works(), profileById('AD'), 'Hanzel H. Fernandez', { statusCodes: [] });
+  assert.equal((body.match(/class="status-group-row"/g) || []).length, 9);
+  assert.ok(!body.includes('report-scope-note'), 'an unfiltered report has no status scope to declare');
 });
 
 test('every report row fills all 14 columns, so no cell loses its borders', () => {

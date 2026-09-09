@@ -5,7 +5,10 @@
 
 import { DEFAULT_PROFILE_ID, STATUS_SHORT_LABELS, profileById } from './config.js';
 
-/** Active filter selections. `null` means "no restriction" (i.e. "All"). */
+/**
+ * Active filter selections. `null` means "no restriction" (i.e. "All") for the single-choice
+ * dropdowns; `statusCodes` is a multi-select, where an empty list means "every status".
+ */
 export function createFilters(overrides = {}) {
   return {
     district: null,
@@ -14,9 +17,14 @@ export function createFilters(overrides = {}) {
     asStatus: null,
     arStatus: null,
     srStatus: null,
-    statusCode: null,
+    statusCodes: [],
     ...overrides,
   };
+}
+
+/** Design-status chips are additive: no chip picked means every status is in scope. */
+export function matchesStatusSelection(work, statusCodes) {
+  return statusCodes.length === 0 || statusCodes.includes(work.statusCode);
 }
 
 export function hasDropdownFilters(filters) {
@@ -37,7 +45,7 @@ export function countActiveDropdownFilters(filters) {
 }
 
 export function hasAnyFilter(state) {
-  return hasDropdownFilters(state.filters) || state.searchQuery.trim() !== '' || state.filters.statusCode !== null;
+  return hasDropdownFilters(state.filters) || state.searchQuery.trim() !== '' || state.filters.statusCodes.length > 0;
 }
 
 export function createUiState(overrides = {}) {
@@ -95,7 +103,7 @@ export function recomputeDerived(state) {
         (active.asStatus === null || work.asStatus === active.asStatus) &&
         (active.arStatus === null || work.arStatus === active.arStatus) &&
         (active.srStatus === null || work.srStatus === active.srStatus) &&
-        (active.statusCode === null || work.statusCode === active.statusCode),
+        matchesStatusSelection(work, active.statusCodes),
     );
   };
 
@@ -130,9 +138,7 @@ export function recomputeDerived(state) {
     (sanitizedFilters.srStatus === null || work.srStatus === sanitizedFilters.srStatus);
 
   const filtered = state.allWorks.filter(
-    (work) =>
-      matchesDropdowns(work) &&
-      (sanitizedFilters.statusCode === null || work.statusCode === sanitizedFilters.statusCode),
+    (work) => matchesDropdowns(work) && matchesStatusSelection(work, sanitizedFilters.statusCodes),
   );
 
   // Status chip counts ignore the active status chip so the row keeps showing every reachable status.

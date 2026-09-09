@@ -1,8 +1,10 @@
 /**
  * Horizontally scrollable KPI chips, mirroring the stats grid on the desktop dashboard.
- * Tapping a chip toggles it as the active status filter. Press and drag (long-press on touch)
- * to reorder status chips; the custom order is persisted. Only statuses present in the current
- * filtered pool are shown. The "All works" chip stays fixed at the start.
+ * Status chips are a multi-select: tapping one adds it to the filter, tapping it again removes it,
+ * and the list shows the works matching any picked chip. "All works" clears the selection. Press
+ * and drag (long-press on touch) to reorder status chips; the custom order is persisted. Only
+ * statuses present in the current filtered pool — or already picked — are shown. The "All works"
+ * chip stays fixed at the start.
  *
  * Ported from android/.../ui/main/StatChipsRow.kt.
  */
@@ -165,16 +167,22 @@ export function createStatChipsRow({ onChipClick, onStatusOrderChange, onClearAl
 
   function render(state) {
     const total = Object.values(state.statusCounts).reduce((sum, count) => sum + count, 0);
-    const visibleOrder = normalize(state.statusChipOrder).filter((code) => (state.statusCounts[code] || 0) > 0);
+    // A picked chip stays on the row even once the dropdown filters leave it with nothing, or it
+    // would vanish while still narrowing the list, with no way to switch it back off.
+    const visibleOrder = normalize(state.statusChipOrder).filter(
+      (code) => (state.statusCounts[code] || 0) > 0 || state.filters.statusCodes.includes(code),
+    );
 
     clear(scroller);
+
+    const selectedCodes = state.filters.statusCodes;
 
     if (total > 0) {
       scroller.append(
         statChip({
           label: 'All works',
           count: total,
-          selected: state.filters.statusCode === null,
+          selected: selectedCodes.length === 0,
           onClick: () => onChipClick(null),
         }),
       );
@@ -184,7 +192,7 @@ export function createStatChipsRow({ onChipClick, onStatusOrderChange, onClearAl
       const chip = statChip({
         label: STATUS_SHORT_LABELS[code] || code,
         count: state.statusCounts[code] || 0,
-        selected: state.filters.statusCode === code,
+        selected: selectedCodes.includes(code),
         code,
         onClick: () => onChipClick(code),
       });
