@@ -240,26 +240,27 @@
   function injectStyles() {
     var style = document.createElement('style');
     style.textContent = [
-      // Sits to the right of the add-work FAB (fixed at bottom-left) so the two never overlap.
-      '.wu-status-pill{position:fixed;left:6.4rem;bottom:2.15rem;z-index:901;display:none;align-items:center;',
-      'gap:.5rem;padding:.6rem .95rem;border-radius:var(--radius-md);font-size:.8rem;font-weight:600;',
-      'font-family:var(--font-sans);border:1px solid var(--border-color);background:var(--bg-panel);',
-      'backdrop-filter:blur(12px);color:var(--text-secondary);box-shadow:var(--shadow-card);cursor:default;',
-      'max-width:min(30rem,calc(100vw - 8rem));}',
+      // Bottom-left, opposite the add-work FAB, so the two never overlap.
+      '.wu-status-pill{position:fixed;left:var(--fab-inset,1.5rem);bottom:var(--fab-inset,1.5rem);z-index:901;',
+      'display:none;align-items:center;gap:.5rem;padding:.55rem .9rem;border-radius:var(--radius-md);',
+      'font-size:.78rem;font-weight:600;font-family:var(--font-sans);border:1px solid var(--border-subtle);',
+      'background:var(--bg-card-elevated);color:var(--text-secondary);box-shadow:var(--shadow-float);',
+      'cursor:default;max-width:min(30rem,calc(100vw - 8rem));}',
       '.wu-status-pill.visible{display:flex;}',
-      '.wu-status-pill.offline{border-color:var(--color-warning);color:var(--color-warning);',
-      'background:var(--color-warning-bg);}',
-      '.wu-status-pill.update{border-color:var(--color-accent);color:var(--text-primary);cursor:pointer;}',
+      '.wu-status-pill.offline{border-color:transparent;color:var(--tone-warning);',
+      'background:var(--tone-warning-bg);}',
+      '.wu-status-pill.update{border-color:var(--accent);color:var(--text-primary);cursor:pointer;}',
       '.wu-status-pill .wu-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}',
       '.wu-hint{color:var(--text-muted);font-size:.82rem;line-height:1.55;margin-bottom:1.25rem;}',
       '.wu-hint code{font-family:var(--font-mono);font-size:.78rem;color:var(--text-secondary);}',
-      '.wu-meta{margin-top:.35rem;padding:.85rem 1rem;border:1px dashed var(--border-color);',
+      '.wu-meta{margin-top:.35rem;padding:.85rem 1rem;border:1px dashed var(--border-subtle);',
       'border-radius:var(--radius-md);color:var(--text-muted);font-size:.78rem;line-height:1.6;}',
       '.wu-meta strong{color:var(--text-secondary);font-weight:600;}',
-      '.wu-linkbtn{background:none;border:none;padding:0;color:var(--color-info);cursor:pointer;',
+      '.wu-linkbtn{background:none;border:none;padding:0;color:var(--accent);cursor:pointer;',
       'font:inherit;font-weight:600;text-decoration:underline;}',
-      '@media (max-width:640px){.wu-status-pill{left:6.15rem;right:.75rem;bottom:2.15rem;font-size:.72rem;',
-      'padding:.5rem .75rem;max-width:none;}}',
+      // On a phone the FAB owns the right-hand corner, so the pill takes the rest of the line.
+      '@media (max-width:640px){.wu-status-pill{left:var(--gutter,.85rem);',
+      'right:calc(var(--gutter,.85rem) + 4.5rem);font-size:.72rem;padding:.5rem .75rem;max-width:none;}}',
       '@media print{.wu-status-pill{display:none !important;}}'
     ].join('');
     document.head.appendChild(style);

@@ -41,7 +41,78 @@
   }
 })();
 
+/**
+ * Dark / light theme gate.
+ *
+ * Runs at parse time, before the first paint, so a light-theme user never sees a dark flash.
+ * A stored choice wins; with none, the dashboard follows the operating system exactly as the
+ * works viewer does. Both branches only stamp `data-theme` — every colour lives in style.css.
+ */
+(function gateTheme() {
+  const THEME_KEY = 'wu.theme';
+  let stored = null;
+  try {
+    stored = window.localStorage.getItem(THEME_KEY);
+  } catch (err) {
+    stored = null; // private mode — the system preference still applies
+  }
+  if (stored === 'light' || stored === 'dark') {
+    document.documentElement.dataset.theme = stored;
+  }
+})();
+
 const CONFIG = window.CONFIG;
+
+/**
+ * Maps a two-digit design-status code ("01".."09") to one of the five semantic tones that
+ * style.css colours through `[data-tone]`. The same mapping as docs/works/js/ui/statusTone.js
+ * and android/.../ui/common/StatusColors.kt — keep the three in step.
+ */
+function statusTone(code) {
+  switch (code) {
+    case '01':
+    case '04':
+      return 'info';
+    case '02':
+    case '05':
+      return 'warning';
+    case '03':
+    case '06':
+      return 'success';
+    case '08':
+    case '09':
+      return 'danger';
+    default:
+      return 'neutral';
+  }
+}
+
+/** The tone for a full status string ("04 Detailed Design Ongoing"), read from its code prefix. */
+function statusToneForLabel(status) {
+  return statusTone((status || '').toString().trim().substring(0, 2));
+}
+
+/**
+ * Badge wording. The sheet's status strings are long ("04 Detailed Design Ongoing") and would
+ * wrap a card badge onto two lines, so badges carry the short form the works viewer and the
+ * Android app already use. Anything unrecognised is shown as the sheet wrote it.
+ */
+const STATUS_SHORT_LABELS = {
+  '01': 'Tentative Ongoing',
+  '02': 'Tentative On Hold',
+  '03': 'Tentative Issued',
+  '04': 'Detailed Ongoing',
+  '05': 'Detailed On Hold',
+  '06': 'Detailed Issued',
+  '07': 'File Not Opened',
+  '08': 'Discarded',
+  '09': 'Returned to Site'
+};
+
+function shortStatusLabel(status) {
+  const text = (status || '').toString().trim();
+  return STATUS_SHORT_LABELS[text.substring(0, 2)] || text;
+}
 
 // Application State
 let state = {
@@ -61,7 +132,9 @@ let state = {
     arStatus: 'ALL',
     srStatus: 'ALL'
   },
-  expandedGroups: new Set(),
+  // Status groups the user has folded away. Everything not in here is open — a dashboard that
+  // opens on nothing but headers has hidden the very thing it is for.
+  collapsedGroups: new Set(),
   activeProfileId: localStorage.getItem('activeProfileId') || CONFIG.DEFAULT_PROFILE_ID || 'AD'
 };
 
@@ -425,11 +498,10 @@ function updateFilterResultChip(filteredCount, totalCount) {
   const countEl = chip.querySelector('.filter-result-count');
   if (!countEl) return;
 
-  const workWord = filteredCount === 1 ? 'work' : 'works';
   if (filteredCount === totalCount) {
-    countEl.textContent = `${filteredCount} ${workWord} match your filters`;
+    countEl.textContent = `${filteredCount} ${filteredCount === 1 ? 'work' : 'works'} match your filters`;
   } else {
-    countEl.textContent = `${filteredCount} of ${totalCount} ${workWord} match your filters`;
+    countEl.textContent = `${filteredCount} of ${totalCount} ${totalCount === 1 ? 'work' : 'works'} match your filters`;
   }
 }
 
@@ -443,7 +515,7 @@ function clearAllFilters() {
     arStatus: 'ALL',
     srStatus: 'ALL'
   };
-  state.expandedGroups.clear();
+  state.collapsedGroups.clear();
 
   dom.searchInput.value = '';
   const dbSearchInput = document.getElementById('dashboard-search-input');
@@ -462,6 +534,8 @@ function clearAllFilters() {
   if (filterArStatus) filterArStatus.value = 'ALL';
   if (filterSrStatus) filterSrStatus.value = 'ALL';
   if (resetFiltersBtn) resetFiltersBtn.style.display = 'none';
+
+  highlightStatusChip('ALL');
 
   renderDashboard();
   showToast('All filters cleared', 'info');
@@ -600,8 +674,8 @@ const dom = {
 function init() {
   setupUIThemeAndDropdowns();
   setupEventListeners();
-  // Highlight Total Works stat card by default
-  document.getElementById('stat-total').classList.add('active');
+  // Every work is in scope until a chip is clicked
+  highlightStatusChip('ALL');
   loadData();
   logActivity('Workflow Updater initialized in Simulation Mode', 'info');
 }
@@ -610,9 +684,34 @@ function init() {
 function setupUIThemeAndDropdowns() {
   updateSimulationToggleUI();
   renderProfileSwitcher();
+  setupThemeToggle();
 
   state.dropdownOptions = resolveDropdownOptions(CONFIG.MOCK_DROPDOWNS);
   applyDropdownOptionsToForms();
+}
+
+/**
+ * Wires the header's theme button. The gate at the top of this file has already applied any
+ * stored choice; this only flips it and writes the new one down. Clicking always sets an
+ * explicit theme — once you have expressed a preference, the system stops overruling it.
+ */
+function setupThemeToggle() {
+  const btn = document.getElementById('theme-toggle-btn');
+  if (!btn) return;
+
+  const prefersLight =
+    typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  btn.addEventListener('click', () => {
+    const current = document.documentElement.dataset.theme || (prefersLight ? 'light' : 'dark');
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+    try {
+      window.localStorage.setItem('wu.theme', next);
+    } catch (err) {
+      /* private mode — the theme still applies for this session */
+    }
+  });
 }
 
 /**
@@ -890,41 +989,37 @@ function setupEventListeners() {
 // Active Stat/Filter Handler
 function setActiveStatusFilter(prefix) {
   state.activeStatusFilter = prefix;
-  
-  // Clear explicit group expansions on filter change
-  state.expandedGroups.clear();
-  
-  // If filtering to a specific group, ensure it starts expanded
-  if (prefix !== 'ALL') {
-    const matchedOpt = CONFIG.STATUS_OPTIONS.find(o => o.startsWith(prefix));
-    if (matchedOpt) {
-      state.expandedGroups.add(matchedOpt);
-    }
-  }
-  
-  // Remove active class from all stat cards
-  document.getElementById('stat-total').classList.remove('active');
-  for (let i = 1; i <= 9; i++) {
-    const p = i.toString().padStart(2, '0');
-    const el = document.getElementById(`stat-${p}`);
-    if (el) el.classList.remove('active');
-  }
-  
-  // Add active class to clicked card
+
+  // Every group opens again on a filter change — including the one just filtered to.
+  state.collapsedGroups.clear();
+
+  const chip = highlightStatusChip(prefix);
   if (prefix === 'ALL') {
-    document.getElementById('stat-total').classList.add('active');
     showToast('Viewing all project tasks', 'info');
-  } else {
-    const el = document.getElementById(`stat-${prefix}`);
-    if (el) {
-      el.classList.add('active');
-      const labelText = el.querySelector('.label').textContent;
-      showToast(`Filtered list to status: ${labelText}`, 'info');
-    }
+  } else if (chip) {
+    showToast(`Filtered list to status: ${chip.querySelector('.label').textContent}`, 'info');
   }
-  
+
   // Re-render dashboard
   renderDashboard();
+}
+
+/**
+ * Moves the filled highlight to one KPI chip. Called from every path that changes the status
+ * filter — including Clear filters, which used to leave the old chip lit while the list below it
+ * showed everything.
+ */
+function highlightStatusChip(prefix) {
+  document.getElementById('stat-total').classList.remove('active');
+  for (let i = 1; i <= 9; i++) {
+    const code = i.toString().padStart(2, '0');
+    const el = document.getElementById(`stat-${code}`);
+    if (el) el.classList.remove('active');
+  }
+
+  const active = document.getElementById(prefix === 'ALL' ? 'stat-total' : `stat-${prefix}`);
+  if (active) active.classList.add('active');
+  return active;
 }
 
 // Update the state and button classes for simulation mode
@@ -981,23 +1076,29 @@ function showToast(message, type = 'success') {
   }, dismissMs - 300);
 }
 
-// Render skeleton card loaders while fetching
+// Render skeleton card loaders while fetching — same grid and shape as the cards they stand in for
 function renderSkeletons() {
-  dom.cardsContainer.innerHTML = Array(2).fill(0).map(() => `
+  const cards = Array(6).fill(0).map(() => `
     <div class="skeleton-card">
       <div class="skeleton-header">
         <div class="skeleton-item skeleton-file"></div>
         <div class="skeleton-item skeleton-badge"></div>
       </div>
       <div class="skeleton-item skeleton-title"></div>
-      <div class="skeleton-item skeleton-desc"></div>
       <div class="skeleton-item skeleton-meta"></div>
+      <div class="skeleton-item skeleton-desc"></div>
       <div class="skeleton-footer">
         <div class="skeleton-item skeleton-avatar"></div>
         <div class="skeleton-item skeleton-button"></div>
       </div>
     </div>
   `).join('');
+  dom.cardsContainer.innerHTML = `<div class="search-results-flat">${cards}</div>`;
+}
+
+/** The two-character monogram an avatar circle has room for ("ASE01" -> "AS"). */
+function profileInitials(id) {
+  return (id || '').toString().trim().replace(/[^A-Za-z0-9]/g, '').substring(0, 2).toUpperCase() || '?';
 }
 
 // Helper to retrieve active engineer profile details from config list
@@ -1019,7 +1120,7 @@ function renderProfileSwitcher() {
   const activeProfile = getActiveProfile();
   
   // Update badge UI
-  if (avatar) avatar.textContent = activeProfile.id;
+  if (avatar) avatar.textContent = profileInitials(activeProfile.id);
   if (text) text.innerHTML = `RDO KKD • <strong>${activeProfile.id}</strong>`;
   
   const headerEngineerProfile = document.getElementById('header-engineer-profile');
@@ -1034,7 +1135,7 @@ function renderProfileSwitcher() {
     const emailHtml = p.email ? `<span class="profile-email">${p.email}</span>` : '';
     return `
       <button type="button" class="${itemClass}" data-profile-id="${p.id}">
-        <div class="profile-dropdown-avatar">${p.id}</div>
+        <div class="profile-dropdown-avatar">${profileInitials(p.id)}</div>
         <div class="profile-dropdown-item-details">
           <span class="profile-name">${p.name}</span>
           ${emailHtml}
@@ -1836,11 +1937,7 @@ function renderDashboard() {
     // 1. SEARCH VIEW: Render a flat cards list to save space (no status header bars)
     const flatListContainer = document.createElement('div');
     flatListContainer.className = 'search-results-flat';
-    flatListContainer.style.display = 'flex';
-    flatListContainer.style.flexDirection = 'column';
-    flatListContainer.style.gap = '0.85rem';
-    flatListContainer.style.width = '100%';
-    
+
     filteredTasks.forEach(task => {
       const cardEl = createTaskCardElement(task);
       flatListContainer.appendChild(cardEl);
@@ -1876,27 +1973,23 @@ function renderDashboard() {
       const groupEl = document.createElement('section');
       
       const isFiltered = state.activeStatusFilter === statusName.substring(0, 2);
-      const isExpanded = isFiltered || state.expandedGroups.has(statusName);
+      const isExpanded = isFiltered || !state.collapsedGroups.has(statusName);
       
       groupEl.className = `status-group ${isExpanded ? '' : 'collapsed'}`;
-      
-      // Style status badges depending on group type
-      let badgeClass = 'status-ongoing';
-      const statusLower = statusName.toLowerCase();
-      if (statusLower.includes('hold') || statusLower.includes('02') || statusLower.includes('05')) {
-        badgeClass = 'status-hold';
-      } else if (statusLower.includes('issued') || statusLower.includes('complete') || statusLower.includes('03') || statusLower.includes('06')) {
-        badgeClass = 'status-issued';
-      }
+
+      const tone = statusToneForLabel(statusName);
 
       groupEl.innerHTML = `
-        <div class="status-group-header" style="cursor: pointer;">
-          <div class="status-group-title" style="display: flex; align-items: center;">
-            <svg class="collapse-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 8px; transition: transform var(--transition-normal);"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            <span class="status-group-badge ${badgeClass}">${statusName}</span>
-          </div>
+        <button type="button" class="status-group-header" aria-expanded="${isExpanded}">
+          <span class="status-group-title">
+            <svg class="collapse-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span class="status-group-badge" data-tone="${tone}">
+              <span class="status-group-dot" aria-hidden="true"></span>
+              <span class="status-group-name">${statusName}</span>
+            </span>
+          </span>
           <span class="status-group-count">${tasksInGroup.length} ${tasksInGroup.length === 1 ? 'work' : 'works'}</span>
-        </div>
+        </button>
         <div class="status-group-cards"></div>
       `;
 
@@ -1906,11 +1999,12 @@ function renderDashboard() {
         const currentlyCollapsed = groupEl.classList.contains('collapsed');
         if (currentlyCollapsed) {
           groupEl.classList.remove('collapsed');
-          state.expandedGroups.add(statusName);
+          state.collapsedGroups.delete(statusName);
         } else {
           groupEl.classList.add('collapsed');
-          state.expandedGroups.delete(statusName);
+          state.collapsedGroups.add(statusName);
         }
+        headerEl.setAttribute('aria-expanded', String(!currentlyCollapsed));
       });
 
       const subContainer = groupEl.querySelector('.status-group-cards');
@@ -2038,116 +2132,131 @@ function parseRemarksToEvents(remarks) {
   return events;
 }
 
-// Generate Card Component DOM node
+/**
+ * One work in the list.
+ *
+ * The shape mirrors the read-only viewer's card (docs/works/js/ui/workCard.js) so the two web
+ * apps read as one product — file number and status on top, the work name as the headline, then
+ * location, size, the three approval pills and the remarks. What the dashboard adds is the
+ * footer: the target date, the remarks timeline and the way in to editing.
+ */
 function createTaskCardElement(task) {
   const colKeys = CONFIG.COLUMNS;
-  const fileNum = getRowValue(task, colKeys.FILE_NUMBER) || 'File Details Awaited';
+  const fileNum = getRowValue(task, colKeys.FILE_NUMBER) || 'No file number';
   const name = getRowValue(task, colKeys.WORK_NAME) || 'Untitled Work';
   const status = getRowValue(task, colKeys.STATUS) || 'No Status';
-  const floors = getRowValue(task, colKeys.FLOORS) || '-';
-  const area = getRowValue(task, colKeys.AREA) || '-';
+  const floors = getRowValue(task, colKeys.FLOORS) || '';
+  const area = getRowValue(task, colKeys.AREA) || '';
   const remarks = getRowValue(task, colKeys.REMARKS) || 'No remarks provided.';
   const assignee = getRowValue(task, colKeys.ASE) || 'Unassigned';
   const targetDate = getRowValue(task, colKeys.TARGET_DATE) || '';
   const lac = getRowValue(task, colKeys.LAC) || '';
   const district = getRowValue(task, colKeys.DISTRICT) || '';
+  const asStatus = getRowValue(task, colKeys.AS_STATUS) || '';
+  const arStatus = getRowValue(task, colKeys.AR_STATUS) || '';
+  const srStatus = getRowValue(task, colKeys.SR_STATUS) || '';
 
   const card = document.createElement('article');
   card.className = 'task-card';
-  
-  // Style status badges
-  let badgeClass = 'status-ongoing';
-  const statusLower = status.toLowerCase();
-  if (statusLower.includes('hold') || statusLower.includes('02') || statusLower.includes('05')) {
-    badgeClass = 'status-hold';
-  } else if (statusLower.includes('issued') || statusLower.includes('complete') || statusLower.includes('03') || statusLower.includes('06')) {
-    badgeClass = 'status-issued';
-  }
+
+  const tone = statusToneForLabel(status);
 
   // Target Date formatting — free text targets show as written
-  let dateText = 'No Target';
+  let dateText = 'No target date';
   if (targetDate) {
     const parts = sheetDateParts(targetDate);
     dateText = parts
-      ? new Date(parts.year, parts.month - 1, parts.day).toLocaleDateString('en-US', {
+      ? `Target ${new Date(parts.year, parts.month - 1, parts.day).toLocaleDateString('en-US', {
           month: 'short',
           day: 'numeric',
           year: 'numeric'
-        })
+        })}`
       : targetDate;
   }
 
   // Get initials for Avatar
   const initials = assignee.substring(0, 3).toUpperCase();
 
+  const place = [lac, district].filter(Boolean).join(' • ') || 'Location not set';
+  const size = [floors ? `${floors} floors` : '', area ? `${area} m²` : ''].filter(Boolean).join('  •  ');
+
   // Parse remarks into timeline events
   const events = parseRemarksToEvents(remarks);
   const showTimeline = events.length > 1 || (events.length === 1 && events[0].dateStr);
 
+  const miniPill = (label, value) => `
+    <span class="mini-pill">
+      <span class="mini-pill-label">${label}:</span>
+      <span class="mini-pill-value">${escapeHtml(value || '—')}</span>
+    </span>`;
+
   card.innerHTML = `
     <div class="card-main-content">
       <div class="card-header">
-        <span class="file-number" title="${fileNum}">${fileNum.length > 25 ? fileNum.substring(0,25)+'...' : fileNum}</span>
-        <span class="badge-status ${badgeClass}">${status}</span>
+        <span class="file-number" title="${escapeHtml(fileNum)}">${escapeHtml(fileNum)}</span>
+        <span class="badge-status" data-tone="${tone}" title="${escapeHtml(status)}">${escapeHtml(shortStatusLabel(status))}</span>
       </div>
-      
+
       <div class="card-body">
-        <h3 title="${name}">${name}</h3>
-        
+        <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
+
         <div class="card-details">
           <div class="card-detail-item">
-            <span class="lbl">Floors & Area</span>
-            <span class="val">${floors} (${area} m²)</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span class="val" title="${escapeHtml(place)}">${escapeHtml(place)}</span>
           </div>
+          ${size ? `
           <div class="card-detail-item">
-            <span class="lbl">LAC & District</span>
-            <span class="val" title="${lac}, ${district}">${lac || 'General'}</span>
-          </div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 15h4v4"/><path d="M7 11h8v8"/></svg>
+            <span class="val">${escapeHtml(size)}</span>
+          </div>` : ''}
         </div>
-        
-        <div class="card-remarks-wrapper">
-          <p class="card-remarks" title="${remarks}">${remarks}</p>
-          ${showTimeline ? `
-            <button class="timeline-toggle-btn" data-row="${task._rowNum}">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-              <span class="btn-text">Timeline Log (${events.length})</span>
-            </button>
-          ` : ''}
+
+        <div class="mini-pill-row">
+          ${miniPill('AS', asStatus)}${miniPill('AR', arStatus)}${miniPill('SR', srStatus)}
         </div>
+
+        <p class="card-remarks" title="${escapeHtml(remarks)}">${escapeHtml(remarks)}</p>
       </div>
-      
+
       <div class="card-footer">
         <div class="card-assignee">
-          <div class="avatar" style="box-shadow: 0 0 8px hsla(142, 70%, 50%, 0.2); background: linear-gradient(135deg, hsl(142, 70%, 45%), hsl(142, 60%, 50%))">${initials}</div>
-          <span>Target: ${dateText}</span>
+          <span class="avatar" title="${escapeHtml(assignee)}">${escapeHtml(initials)}</span>
+          <span title="${escapeHtml(dateText)}">${escapeHtml(dateText)}</span>
         </div>
-        <button class="quick-update-btn" data-row="${task._rowNum}">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="14 2 18 6 7 17 3 17 3 13 14 2"></polygon><line x1="3" y1="22" x2="21" y2="22"></line></svg>
-          Edit Details
-        </button>
+        <div class="card-actions">
+          ${showTimeline ? `
+            <button type="button" class="timeline-toggle-btn" data-row="${task._rowNum}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span class="btn-text">Timeline (${events.length})</span>
+            </button>
+          ` : ''}
+          <button type="button" class="quick-update-btn" data-row="${task._rowNum}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polygon points="14 2 18 6 7 17 3 17 3 13 14 2"></polygon><line x1="3" y1="22" x2="21" y2="22"></line></svg>
+            Edit
+          </button>
+        </div>
       </div>
     </div>
-    
+
     ${showTimeline ? `
       <div class="card-timeline-container collapsed" id="timeline-${task._rowNum}">
         <h4 class="timeline-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color: var(--color-accent); vertical-align: middle;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-          Project Event History Log
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          Event history
         </h4>
         <div class="timeline-list">
           ${events.map(ev => {
             const hasDate = !!ev.dateStr;
-            const dateBadge = hasDate ? `<span class="timeline-date-badge">${ev.dateStr}</span>` : '';
+            const dateBadge = hasDate ? `<span class="timeline-date-badge">${escapeHtml(ev.dateStr)}</span>` : '';
             const itemClass = hasDate ? 'timeline-item has-date' : 'timeline-item no-date';
             return `
               <div class="${itemClass}">
                 <div class="timeline-dot"></div>
-                <div class="timeline-meta">
-                  ${dateBadge}
-                </div>
+                <div class="timeline-meta">${dateBadge}</div>
                 <div class="timeline-content">
-                  <span class="timeline-desc-text">${ev.description}</span>
-                  ${hasDate ? `<div class="timeline-original-text">"${ev.originalText}"</div>` : ''}
+                  <span class="timeline-desc-text">${escapeHtml(ev.description)}</span>
+                  ${hasDate ? `<div class="timeline-original-text">"${escapeHtml(ev.originalText)}"</div>` : ''}
                 </div>
               </div>
             `;
@@ -2186,12 +2295,12 @@ function createTaskCardElement(task) {
         timelineContainer.classList.remove('collapsed');
         timelineContainer.classList.add('expanded');
         toggleBtn.classList.add('active');
-        toggleBtn.querySelector('.btn-text').textContent = 'Hide Timeline';
+        toggleBtn.querySelector('.btn-text').textContent = 'Hide';
       } else {
         timelineContainer.classList.remove('expanded');
         timelineContainer.classList.add('collapsed');
         toggleBtn.classList.remove('active');
-        toggleBtn.querySelector('.btn-text').textContent = `Timeline Log (${events.length})`;
+        toggleBtn.querySelector('.btn-text').textContent = `Timeline (${events.length})`;
       }
     });
 
@@ -2676,26 +2785,17 @@ function renderAnalytics() {
     const heightPercentage = Math.round((count / maxCount) * 100);
     const label = prefix;
     const fullText = CONFIG.STATUS_OPTIONS.find(o => o.startsWith(prefix)) || prefix;
-    
-    // Custom gradient styling per status category
-    let styleBar = 'background: var(--gradient-accent); box-shadow: 0 0 10px -2px var(--color-accent-glow);';
-    if (prefix === '02' || prefix === '05') {
-      styleBar = 'background: linear-gradient(135deg, hsl(38, 92%, 45%), hsl(38, 92%, 55%)); box-shadow: 0 0 10px -2px hsla(38, 92%, 50%, 0.3);';
-    } else if (prefix === '03' || prefix === '06') {
-      styleBar = 'background: linear-gradient(135deg, hsl(142, 70%, 45%), hsl(142, 70%, 55%)); box-shadow: 0 0 10px -2px hsla(142, 70%, 50%, 0.3);';
-    } else if (prefix === '08' || prefix === '09') {
-      styleBar = 'background: linear-gradient(135deg, hsl(350, 89%, 55%), hsl(350, 89%, 65%)); box-shadow: 0 0 10px -2px hsla(350, 89%, 60%, 0.3);';
-    }
-    
+
     // The bar sits in a track of its own so its percentage height has a definite box to measure
     // against, and the count rides at `bottom: <same %>` so it floats just above the bar's top.
+    // Its colour is the status tone, so the chart reads the same as the badges beside it.
     return `
       <div class="bar-chart-bar-wrapper">
         <div class="bar-chart-bar-track">
-          <div class="bar-chart-bar" style="height: ${heightPercentage}%; ${styleBar}" title="${fullText}: ${count} works"></div>
+          <div class="bar-chart-bar" data-tone="${statusTone(prefix)}" style="height: ${heightPercentage}%" title="${escapeHtml(fullText)}: ${count} works"></div>
           <span class="bar-chart-value" style="bottom: ${heightPercentage}%">${count}</span>
         </div>
-        <span class="bar-chart-label" title="${fullText}">${label}</span>
+        <span class="bar-chart-label" title="${escapeHtml(fullText)}">${label}</span>
       </div>
     `;
   }).join('');
@@ -2748,17 +2848,8 @@ function renderCalendar() {
     dayTasks.forEach(task => {
       const eventTag = document.createElement('div');
       eventTag.className = 'calendar-event';
-      const status = getRowValue(task, colKeys.STATUS).toString().toLowerCase();
-      
-      // Dynamic HSL colors inside calendar cell items
-      let styleColor = 'background: hsla(200, 95%, 55%, 0.15); color: hsl(200, 95%, 55%); border-left: 2px solid hsl(200, 95%, 55%)';
-      if (status.includes('hold') || status.includes('02') || status.includes('05')) {
-        styleColor = 'background: hsla(38, 92%, 50%, 0.15); color: hsl(38, 92%, 50%); border-left: 2px solid hsl(38, 92%, 50%)';
-      } else if (status.includes('issued') || status.includes('complete') || status.includes('03') || status.includes('06')) {
-        styleColor = 'background: hsla(142, 70%, 50%, 0.15); color: hsl(142, 70%, 50%); border-left: 2px solid hsl(142, 70%, 50%)';
-      }
-      
-      eventTag.style = styleColor;
+      // The status tone, so a deadline in the calendar carries the same colour as its badge.
+      eventTag.dataset.tone = statusToneForLabel(getRowValue(task, colKeys.STATUS));
       eventTag.textContent = getRowValue(task, colKeys.WORK_NAME) || 'Untitled Work';
       eventTag.title = `${getRowValue(task, colKeys.WORK_NAME)} (Status: ${getRowValue(task, colKeys.STATUS)})`;
       

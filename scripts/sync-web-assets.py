@@ -31,8 +31,9 @@ FONT_IMPORT_RE = re.compile(r"^@import\s+url\(['\"]([^'\"]+)['\"]\);?[ \t]*\r?\n
 
 HEAD_TAGS = """  <!-- Web app shell — injected by scripts/sync-web-assets.py, do not edit here -->
   <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="#09060e">
-  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0912" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f4fa" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="dark light">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">

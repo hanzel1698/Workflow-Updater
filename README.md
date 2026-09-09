@@ -83,16 +83,35 @@ user-agent string) on the normal layout. It is re-checked on resize and when the
 
 What the extra room buys:
 
-- **The dashboard spans the window** — at 2560px the KPI cards fit on one row instead of two, and
-  the filters, calendar and analytics panels all widen with it.
-- **Wider work rows** — at 1920px a row goes from 1376px to about 1800px, which is usually the
-  difference between a truncated remark and the whole one.
-- **Two columns of work rows** once there is room for two comfortable ones (about 2000px of
-  container), so a 4K monitor shows twice as many works.
+- **The dashboard spans the window** — the KPI chips, filters, calendar and analytics panels all
+  widen with it, and the side gutter grows with the viewport instead of stopping at 1440px.
+- **More works per screen** — the card grid grows a column for every ~380px of window, so 1440px
+  shows three across and 1920px shows four.
 - **A roomier edit sheet** above 1700px, where the form and its timeline both have space.
 
 Nothing changes on a phone, a tablet, or a narrowed window — the rules are additive and keyed to
 `data-device="desktop"`.
+
+### Design system
+
+The dashboard and the read-only works viewer share one visual language, so the two web apps read as
+one product: the same violet accent, the same five semantic status tones, the same radius scale and
+the same flat, quiet surfaces. `windows/style.css` holds the dashboard's tokens (with legacy
+`--color-*` aliases kept for `docs/app/web-boot.js`); `docs/works/styles.css` holds the viewer's.
+
+Status colour is defined once and applied through `data-tone`, so a badge, a KPI chip, a group
+header, a calendar deadline and a chart bar for the same design status are always the same colour.
+The mapping lives in three places that must stay in step:
+
+| Surface | File |
+|---------|------|
+| Dashboard | `statusTone()` in `windows/app.js` |
+| Works viewer | `docs/works/js/ui/statusTone.js` |
+| Android | `android/.../ui/common/StatusColors.kt` |
+
+Both themes are real: the dashboard defaults to the operating system's preference and the header's
+sun/moon button overrides it, storing the choice under `wu.theme`. A gate at the top of
+`windows/app.js` applies a stored theme before first paint, so there is no flash of the wrong one.
 
 ### Rebuilding the web app
 
