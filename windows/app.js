@@ -1111,7 +1111,6 @@ function getActiveProfile() {
 function renderProfileSwitcher() {
   const container = document.getElementById('profile-switcher-container');
   const btn = document.getElementById('profile-switcher-btn');
-  const avatar = document.getElementById('active-profile-avatar');
   const text = document.getElementById('active-profile-text');
   const menu = document.getElementById('profile-dropdown-menu');
   
@@ -1120,7 +1119,6 @@ function renderProfileSwitcher() {
   const activeProfile = getActiveProfile();
   
   // Update badge UI
-  if (avatar) avatar.textContent = profileInitials(activeProfile.id);
   if (text) text.innerHTML = `RDO KKD • <strong>${activeProfile.id}</strong>`;
   
   const headerEngineerProfile = document.getElementById('header-engineer-profile');
@@ -1893,17 +1891,14 @@ function renderDashboard() {
     }
   });
 
-  const statTotalEl = document.getElementById('stat-total');
-  if (statTotalEl) {
-    statTotalEl.style.display = poolCount > 0 ? '' : 'none';
-    animateCount(dom.statTotal, poolCount);
-  }
+  // Every chip stays on screen whatever its count. A status that drops to zero is
+  // itself information ("nothing discarded"), and a grid that keeps the same chips
+  // in the same places is far easier to read than one that reshuffles on each filter.
+  animateCount(dom.statTotal, poolCount);
 
   for (const prefix in statusCounts) {
-    const el = document.getElementById(`stat-${prefix}`);
-    if (dom.statCards[prefix] && el) {
+    if (dom.statCards[prefix]) {
       animateCount(dom.statCards[prefix], statusCounts[prefix]);
-      el.style.display = statusCounts[prefix] > 0 ? '' : 'none';
     }
   }
 
