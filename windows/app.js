@@ -165,23 +165,75 @@ function withSpreadsheetId(payload) {
   return payload;
 }
 
-// Parse sheet date strings (DD/MM/YYYY or ISO) into YYYY-MM-DD for date inputs
-function parseSheetDateToInput(rawDate) {
-  if (!rawDate) return '';
+// The sheet delivers date cells as ISO-8601 instants (e.g. "2026-09-01T18:30:00.000Z"), which are
+// midnight in India Standard Time. Reading them in the browser's own zone only happens to work on a
+// device already set to IST, so the zone is pinned here.
+const SHEET_TIME_ZONE = 'Asia/Kolkata';
+
+const SHEET_DATE_PARTS_FORMATTER = new Intl.DateTimeFormat('en-GB', {
+  timeZone: SHEET_TIME_ZONE,
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric'
+});
+
+// Plain day/month/year already in the sheet's DD/MM/YYYY convention, e.g. "07/01/2025" or "7-1-2025".
+const SHEET_DAY_MONTH_YEAR = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/;
+
+// ISO date without a time component, e.g. "2025-01-07" — what our own date inputs write back.
+const SHEET_ISO_DATE_ONLY = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+
+/**
+ * Single reader for every date cell coming back from the sheet: the edit modal, the exports, the
+ * task cards and the calendar all resolve a date the same way, so they cannot drift a day apart.
+ *
+ * Returns {day, month, year} as Google Sheets shows it, or null for free text (a Target Date like
+ * "After getting intimation from field officials") so callers can pass it through untouched.
+ *
+ * Same rules as SheetDateFormatter in docs/works/js/model.js — keep the two in step.
+ */
+function sheetDateParts(rawDate) {
+  if (rawDate === null || rawDate === undefined) return null;
+
+  if (rawDate instanceof Date) {
+    return isNaN(rawDate.getTime()) ? null : sheetDatePartsFromInstant(rawDate);
+  }
+
   const str = rawDate.toString().trim();
-  if (!str) return '';
+  if (!str || str.toLowerCase() === 'null') return null;
 
-  const slashMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (slashMatch) {
-    const [, day, month, year] = slashMatch;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  // ISO-8601 timestamp (has a time component): an instant, so resolve it in the sheet's zone.
+  if (str.includes('T')) {
+    const millis = Date.parse(str);
+    if (isFinite(millis)) return sheetDatePartsFromInstant(new Date(millis));
   }
 
-  const d = new Date(str);
-  if (!isNaN(d.getTime())) {
-    return d.toISOString().split('T')[0];
-  }
-  return '';
+  // Already a calendar day: read the fields directly, no zone shifting.
+  const iso = SHEET_ISO_DATE_ONLY.exec(str);
+  if (iso) return { day: Number(iso[3]), month: Number(iso[2]), year: Number(iso[1]) };
+
+  // Day-first text, which Date.parse would otherwise read as month-first and swap.
+  const dmy = SHEET_DAY_MONTH_YEAR.exec(str);
+  if (dmy) return { day: Number(dmy[1]), month: Number(dmy[2]), year: Number(dmy[3]) };
+
+  return null;
+}
+
+function sheetDatePartsFromInstant(date) {
+  const parts = {};
+  SHEET_DATE_PARTS_FORMATTER.formatToParts(date).forEach(part => {
+    if (part.type === 'day' || part.type === 'month' || part.type === 'year') {
+      parts[part.type] = Number(part.value);
+    }
+  });
+  return parts;
+}
+
+// Parse sheet date values into YYYY-MM-DD for date inputs
+function parseSheetDateToInput(rawDate) {
+  const parts = sheetDateParts(rawDate);
+  if (!parts) return '';
+  return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
 }
 
 // Resolve dropdown options from live sheet response or config fallback
@@ -1134,26 +1186,15 @@ function buildProgressReportTitle(designation, engineerName) {
 // Format date values cleanly for export tables
 function formatDateValue(val) {
   if (!val) return '-';
-  if (val instanceof Date) {
-    const dd = String(val.getDate()).padStart(2, '0');
-    const mm = String(val.getMonth() + 1).padStart(2, '0');
-    const yyyy = val.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
+
+  const parts = sheetDateParts(val);
+  if (parts) {
+    return `${String(parts.day).padStart(2, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.year).padStart(4, '0')}`;
   }
+
+  // Free text (e.g. "After getting intimation from field officials") prints as written.
   const dateStr = val.toString().trim();
   if (!dateStr || dateStr.toLowerCase() === 'null') return '-';
-  
-  // Try to parse standard ISO format
-  try {
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime()) && dateStr.includes('-')) {
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const yyyy = d.getFullYear();
-      return `${dd}-${mm}-${yyyy}`;
-    }
-  } catch (e) {}
-
   return dateStr;
 }
 
@@ -2023,19 +2064,17 @@ function createTaskCardElement(task) {
     badgeClass = 'status-issued';
   }
 
-  // Target Date formatting
+  // Target Date formatting — free text targets show as written
   let dateText = 'No Target';
   if (targetDate) {
-    try {
-      const d = new Date(targetDate);
-      if (!isNaN(d.getTime())) {
-        dateText = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      } else {
-        dateText = targetDate;
-      }
-    } catch {
-      dateText = targetDate;
-    }
+    const parts = sheetDateParts(targetDate);
+    dateText = parts
+      ? new Date(parts.year, parts.month - 1, parts.day).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        })
+      : targetDate;
   }
 
   // Get initials for Avatar
@@ -2701,15 +2740,9 @@ function renderCalendar() {
     
     // Match and append active projects with a target date inside this day
     const dayTasks = state.tasks.filter(task => {
-      const targetDateStr = getRowValue(task, colKeys.TARGET_DATE);
-      if (!targetDateStr) return false;
-      
-      try {
-        const d = new Date(targetDateStr);
-        return d.getDate() === day && d.getMonth() === month && d.getFullYear() === year;
-      } catch {
-        return false;
-      }
+      const parts = sheetDateParts(getRowValue(task, colKeys.TARGET_DATE));
+      if (!parts) return false;
+      return parts.day === day && parts.month === month + 1 && parts.year === year;
     });
     
     dayTasks.forEach(task => {
