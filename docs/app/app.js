@@ -121,7 +121,9 @@ let state = {
   dropdownOptions: {},
   searchQuery: '',
   isSimulationMode: CONFIG.SIMULATION_MODE || !CONFIG.SCRIPT_URL,
-  activeStatusFilter: 'ALL',
+  // Design-status KPI chips are a multi-select: each click toggles one code in or out, and an
+  // empty set means every status is in scope (the "All works" chip).
+  selectedStatuses: new Set(),
   activeView: 'LIST', // 'LIST', 'CALENDAR', 'ANALYTICS'
   currentMonth: new Date(),
   activityLogs: [],
@@ -389,9 +391,23 @@ function updateFilterStatusDropdowns() {
   // Filter-bar AS/AR/SR selects are populated from loaded tasks in populateDynamicFilters().
 }
 
+/** The selected status codes in canonical 01…09 order, so every consumer reads them the same way. */
+function selectedStatusCodes() {
+  return CONFIG.STATUS_OPTIONS
+    .map(option => option.substring(0, 2))
+    .filter(code => state.selectedStatuses.has(code));
+}
+
+/** No chip picked means "every status", not "no status". */
+function matchesStatusSelection(task) {
+  if (state.selectedStatuses.size === 0) return true;
+  const status = getRowValue(task, CONFIG.COLUMNS.STATUS).toString().trim();
+  return state.selectedStatuses.has(status.substring(0, 2));
+}
+
 function hasAnyActiveFilter() {
   return !!state.searchQuery ||
-    state.activeStatusFilter !== 'ALL' ||
+    state.selectedStatuses.size > 0 ||
     state.filters.district !== 'ALL' ||
     state.filters.lac !== 'ALL' ||
     state.filters.asStatus !== 'ALL' ||
@@ -417,11 +433,7 @@ function getWorksForFilterOptions(excludeFilter) {
       if (!match) return false;
     }
 
-    if (excludeFilter !== 'status' && state.activeStatusFilter !== 'ALL') {
-      const status = getRowValue(task, colKeys.STATUS).toString().trim();
-      const prefix = status.substring(0, 2);
-      if (prefix !== state.activeStatusFilter) return false;
-    }
+    if (excludeFilter !== 'status' && !matchesStatusSelection(task)) return false;
 
     if (excludeFilter !== 'district' && state.filters.district !== 'ALL') {
       const dist = getRowValue(task, colKeys.DISTRICT).toString().trim();
@@ -507,7 +519,7 @@ function updateFilterResultChip(filteredCount, totalCount) {
 
 function clearAllFilters() {
   state.searchQuery = '';
-  state.activeStatusFilter = 'ALL';
+  state.selectedStatuses.clear();
   state.filters = {
     district: 'ALL',
     lac: 'ALL',
@@ -535,7 +547,7 @@ function clearAllFilters() {
   if (filterSrStatus) filterSrStatus.value = 'ALL';
   if (resetFiltersBtn) resetFiltersBtn.style.display = 'none';
 
-  highlightStatusChip('ALL');
+  syncStatusChipHighlight();
 
   renderDashboard();
   showToast('All filters cleared', 'info');
@@ -675,7 +687,7 @@ function init() {
   setupUIThemeAndDropdowns();
   setupEventListeners();
   // Every work is in scope until a chip is clicked
-  highlightStatusChip('ALL');
+  syncStatusChipHighlight();
   loadData();
   logActivity('Workflow Updater initialized in Simulation Mode', 'info');
 }
@@ -867,9 +879,9 @@ function setupEventListeners() {
   dom.addTaskForm.addEventListener('submit', handleAddTaskSubmit);
   dom.editTaskForm.addEventListener('submit', handleEditTaskSubmit);
 
-  // Active Stat Cards clicks for Filter updates
+  // Active Stat Cards clicks for Filter updates — each click toggles that status in or out
   document.getElementById('stat-total').addEventListener('click', () => {
-    setActiveStatusFilter('ALL');
+    toggleStatusFilter('ALL');
   });
 
   for (let i = 1; i <= 9; i++) {
@@ -877,7 +889,7 @@ function setupEventListeners() {
     const el = document.getElementById(`stat-${prefix}`);
     if (el) {
       el.addEventListener('click', () => {
-        setActiveStatusFilter(prefix);
+        toggleStatusFilter(prefix);
       });
     }
   }
@@ -986,40 +998,61 @@ function setupEventListeners() {
   });
 }
 
-// Active Stat/Filter Handler
-function setActiveStatusFilter(prefix) {
-  state.activeStatusFilter = prefix;
+/**
+ * Adds or removes one KPI chip from the status selection; 'ALL' clears it. Chips are additive, so
+ * picking a second one widens the list to both statuses rather than replacing the first.
+ */
+function toggleStatusFilter(prefix) {
+  if (prefix === 'ALL') {
+    state.selectedStatuses.clear();
+  } else if (state.selectedStatuses.has(prefix)) {
+    state.selectedStatuses.delete(prefix);
+  } else {
+    state.selectedStatuses.add(prefix);
+  }
 
   // Every group opens again on a filter change — including the one just filtered to.
   state.collapsedGroups.clear();
 
-  const chip = highlightStatusChip(prefix);
-  if (prefix === 'ALL') {
-    showToast('Viewing all project tasks', 'info');
-  } else if (chip) {
-    showToast(`Filtered list to status: ${chip.querySelector('.label').textContent}`, 'info');
-  }
+  syncStatusChipHighlight();
+  showToast(describeStatusSelection(), 'info');
 
   // Re-render dashboard
   renderDashboard();
 }
 
+/** Reads the current selection back as a sentence for the toast. */
+function describeStatusSelection() {
+  const labels = selectedStatusCodes().map(code => {
+    const chip = document.getElementById(`stat-${code}`);
+    return chip ? chip.querySelector('.label').textContent : code;
+  });
+
+  if (labels.length === 0) return 'Viewing all project tasks';
+  if (labels.length === 1) return `Filtered list to status: ${labels[0]}`;
+  return `Filtered list to ${labels.length} statuses: ${labels.join(', ')}`;
+}
+
 /**
- * Moves the filled highlight to one KPI chip. Called from every path that changes the status
- * filter — including Clear filters, which used to leave the old chip lit while the list below it
- * showed everything.
+ * Lights every picked KPI chip, and "All works" when none is. Called from every path that changes
+ * the status filter — including Clear filters, which used to leave the old chip lit while the list
+ * below it showed everything.
  */
-function highlightStatusChip(prefix) {
-  document.getElementById('stat-total').classList.remove('active');
+function syncStatusChipHighlight() {
+  const total = document.getElementById('stat-total');
+  if (total) {
+    total.classList.toggle('active', state.selectedStatuses.size === 0);
+    total.setAttribute('aria-pressed', String(state.selectedStatuses.size === 0));
+  }
+
   for (let i = 1; i <= 9; i++) {
     const code = i.toString().padStart(2, '0');
     const el = document.getElementById(`stat-${code}`);
-    if (el) el.classList.remove('active');
+    if (!el) continue;
+    const picked = state.selectedStatuses.has(code);
+    el.classList.toggle('active', picked);
+    el.setAttribute('aria-pressed', String(picked));
   }
-
-  const active = document.getElementById(prefix === 'ALL' ? 'stat-total' : `stat-${prefix}`);
-  if (active) active.classList.add('active');
-  return active;
 }
 
 // Update the state and button classes for simulation mode
@@ -1282,6 +1315,42 @@ function buildProgressReportTitle(designation, engineerName) {
   return `PROGRESS REPORT - ${designation.toString().trim().toUpperCase()} - ${engineerName.toString().trim()} - AS ON ${date}.`;
 }
 
+/**
+ * The status groups an export prints, in canonical order.
+ *
+ * With KPI chips picked, a report covers exactly those statuses — every work in each one, and no
+ * group for a status that was filtered out. Printing "01 TENTATIVE DESIGN ONGOING : 0 WORKS / NIL"
+ * under a report the reader was told is about detailed design reads as a finding about the office
+ * rather than a consequence of the filter. With no chip picked nothing is excluded, so every
+ * status is listed and the empty ones stay as NIL.
+ */
+function statusOptionsForExport() {
+  if (state.selectedStatuses.size === 0) return CONFIG.STATUS_OPTIONS;
+  return CONFIG.STATUS_OPTIONS.filter(option => state.selectedStatuses.has(option.substring(0, 2)));
+}
+
+/**
+ * Names the picked statuses in the exported file. Without it a reader has no way to tell a report
+ * covering two statuses from one where the office happens to have works in only two.
+ */
+function buildReportScopeNote() {
+  const statuses = statusOptionsForExport();
+  if (statuses.length === CONFIG.STATUS_OPTIONS.length) return '';
+  return `<p class="report-scope-note">Design status: ${escapeHtml(statuses.join('; '))}</p>`;
+}
+
+/** The same note as a spreadsheet row — the Excel export is a table, with no paragraph to hang it on. */
+function buildExcelScopeNoteRow() {
+  const statuses = statusOptionsForExport();
+  if (statuses.length === CONFIG.STATUS_OPTIONS.length) return '';
+  return `
+        <tr>
+          <td colspan="14" style="text-align: center; font-size: 11pt; font-weight: bold; color: #334155; vertical-align: middle; font-family: 'Segoe UI', sans-serif;">
+            Design status: ${escapeHtml(statuses.join('; '))}
+          </td>
+        </tr>`;
+}
+
 // Format date values cleanly for export tables
 function formatDateValue(val) {
   if (!val) return '-';
@@ -1345,12 +1414,8 @@ function getFilteredTasks() {
       if (!match) return false;
     }
 
-    // Active Status Stat Filter
-    if (state.activeStatusFilter !== 'ALL') {
-      const status = getRowValue(task, colKeys.STATUS).toString().trim();
-      const prefix = status.substring(0, 2);
-      if (prefix !== state.activeStatusFilter) return false;
-    }
+    // Active Status Stat Filter — the union of every picked KPI chip
+    if (!matchesStatusSelection(task)) return false;
 
     // Dynamic dropdown filter fields
     if (state.filters.district !== 'ALL') {
@@ -1416,15 +1481,15 @@ function downloadPdfReport(engineerName) {
   });
   
   let tableBodyHtml = "";
-  
-  CONFIG.STATUS_OPTIONS.forEach(statusName => {
+
+  statusOptionsForExport().forEach(statusName => {
     const groupTasks = tasksByStatus[statusName] || [];
-    
+
     // Add group header row spanning all 14 columns
     const count = groupTasks.length;
     const suffix = count === 1 ? "WORK" : "WORKS";
     const headerText = `${statusName.toUpperCase()} : ${count} ${suffix}`;
-    
+
     tableBodyHtml += `
       <tr class="status-group-row">
         <td colspan="14">${headerText}</td>
@@ -1511,6 +1576,13 @@ function downloadPdfReport(engineerName) {
           font-weight: 600;
           color: #334155;
           margin: 10px 0 0 0;
+        }
+        .report-scope-note {
+          text-align: left;
+          font-size: 10pt;
+          font-weight: 600;
+          color: #334155;
+          margin: 4px 0 0 0;
         }
         table {
           width: 100%;
@@ -1605,6 +1677,7 @@ function downloadPdfReport(engineerName) {
         <h1>${escapeHtml(title)}</h1>
       </div>
       <p class="total-works-summary">Total number of works: ${totalWorks}</p>
+      ${buildReportScopeNote()}
       <table>
         <colgroup>
           <col style="width: 350px" />
@@ -1688,14 +1761,14 @@ function downloadExcelReport() {
   
   let tableBodyHtml = "";
   
-  CONFIG.STATUS_OPTIONS.forEach(statusName => {
+  statusOptionsForExport().forEach(statusName => {
     const groupTasks = tasksByStatus[statusName] || [];
-    
+
     // Add group header row spanning all 14 columns
     const count = groupTasks.length;
     const suffix = count === 1 ? "WORK" : "WORKS";
     const headerText = `${statusName.toUpperCase()} : ${count} ${suffix}`;
-    
+
     tableBodyHtml += `
       <tr class="status-group-row">
         <td colspan="14" style="background-color: #cbd5e1; font-weight: bold; color: #0f172a; border: 1px solid #94a3b8; font-size: 12pt; height: 30px; padding: 6px; vertical-align: middle; font-family: 'Segoe UI', sans-serif;">
@@ -1791,6 +1864,7 @@ function downloadExcelReport() {
             ${title}
           </td>
         </tr>
+        ${buildExcelScopeNoteRow()}
         <tr><td colspan="14" style="height: 10px;"></td></tr>
       </table>
       
@@ -1967,7 +2041,7 @@ function renderDashboard() {
 
       const groupEl = document.createElement('section');
       
-      const isFiltered = state.activeStatusFilter === statusName.substring(0, 2);
+      const isFiltered = state.selectedStatuses.has(statusName.substring(0, 2));
       const isExpanded = isFiltered || !state.collapsedGroups.has(statusName);
       
       groupEl.className = `status-group ${isExpanded ? '' : 'collapsed'}`;

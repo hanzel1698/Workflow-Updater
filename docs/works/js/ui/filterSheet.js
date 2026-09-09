@@ -74,7 +74,7 @@ export function showFilterSheet({ state, onApply }) {
     attrs: { type: 'button' },
     on: {
       click: () => {
-        onApply({ ...selection, statusCode: state.filters.statusCode });
+        onApply({ ...selection, statusCodes: state.filters.statusCodes });
         sheet.close();
       },
     },

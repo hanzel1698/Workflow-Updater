@@ -101,10 +101,22 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
       update((s) => recomputeDerived({ ...s, searchQuery: query }));
     },
 
+    /**
+     * Toggles one design-status chip in or out of the selection; `null` is the "All works" chip,
+     * which clears it. Chips are additive, so picking a second one widens the list rather than
+     * replacing the first. The selection is kept in canonical 01…09 order, not tap order, so the
+     * exported report's groups read in the same sequence however the chips were picked.
+     */
     onStatusChipSelected(code) {
       update((s) => {
-        const newCode = s.filters.statusCode === code ? null : code;
-        return recomputeDerived({ ...s, filters: { ...s.filters, statusCode: newCode } });
+        const current = s.filters.statusCodes;
+        const statusCodes =
+          code === null
+            ? []
+            : current.includes(code)
+              ? current.filter((existing) => existing !== code)
+              : [...current, code].sort();
+        return recomputeDerived({ ...s, filters: { ...s.filters, statusCodes } });
       });
     },
 
@@ -117,7 +129,7 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
     },
 
     applyFilters(filters) {
-      update((s) => recomputeDerived({ ...s, filters: { ...filters, statusCode: s.filters.statusCode } }));
+      update((s) => recomputeDerived({ ...s, filters: { ...filters, statusCodes: s.filters.statusCodes } }));
     },
 
     clearAllFilters() {
@@ -130,7 +142,9 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
 
     /** The report markup for the print view — see ui/pdfExport.js. */
     buildReportBody(engineerName) {
-      return buildReportBody(state.filteredWorks, state.activeProfile, engineerName);
+      return buildReportBody(state.filteredWorks, state.activeProfile, engineerName, {
+        statusCodes: state.filters.statusCodes,
+      });
     },
 
     findWork(rowNum) {

@@ -7,7 +7,7 @@
 // Namespaced because the editable dashboard at /app/ shares this origin — and therefore this
 // cache storage. Each app must only ever reap its own generations.
 const CACHE_PREFIX = 'rdo-kkd-works-';
-const CACHE_NAME = `${CACHE_PREFIX}v4`;
+const CACHE_NAME = `${CACHE_PREFIX}v5`;
 
 const APP_SHELL = [
   './',
