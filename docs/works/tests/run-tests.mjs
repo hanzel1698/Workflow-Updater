@@ -9,7 +9,14 @@ import assert from 'node:assert/strict';
 
 import { ALL_PROFILE, MOCK_ROWS, STATUS_OPTIONS, profileById } from '../js/config.js';
 import { SheetDateFormatter, StatusMapper, createWorkItem } from '../js/model.js';
-import { createFilters, createUiState, hasAnyFilter, recomputeDerived } from '../js/state.js';
+import {
+  computeDropdownOptions,
+  createFilters,
+  createUiState,
+  hasAnyFilter,
+  pruneSelections,
+  recomputeDerived,
+} from '../js/state.js';
 import * as chipOrder from '../js/chipOrder.js';
 import { createRepository, filterRowsForProfile } from '../js/repository.js';
 import { REPORT_CSS, buildReportBody, buildReportHtml, reportTitle } from '../js/report.js';
@@ -151,14 +158,24 @@ test('filter options are built from the loaded works', () => {
 });
 
 test('SE filter narrows the list', () => {
-  const bySe = recomputeDerived(baseState({ filters: createFilters({ se: 'DD' }) }));
+  const bySe = recomputeDerived(baseState({ filters: createFilters({ se: ['DD'] }) }));
   assert.equal(bySe.filteredWorks.length, 1);
   assert.equal(bySe.filteredWorks[0].se, 'DD');
 });
 
+test('dropdown filters are multi-select: picking several widens the match to any of them', () => {
+  const [districtA, districtB] = [...new Set(works().map((w) => w.district))];
+  const state = recomputeDerived(baseState({ filters: createFilters({ district: [districtA, districtB] }) }));
+  assert.ok(state.filteredWorks.every((w) => w.district === districtA || w.district === districtB));
+  assert.equal(
+    state.filteredWorks.length,
+    works().filter((w) => w.district === districtA || w.district === districtB).length,
+  );
+});
+
 test('filter options cascade when a district is selected', () => {
   const district = works()[0].district;
-  const state = recomputeDerived(baseState({ filters: createFilters({ district }) }));
+  const state = recomputeDerived(baseState({ filters: createFilters({ district: [district] }) }));
   const expected = [
     ...new Set(
       works()
@@ -170,9 +187,23 @@ test('filter options cascade when a district is selected', () => {
   assert.deepEqual(state.lacOptions, expected);
 });
 
+test('cascading options widen across several selected districts (union, not intersection)', () => {
+  const [districtA, districtB] = [...new Set(works().map((w) => w.district))];
+  const options = computeDropdownOptions(works(), createFilters({ district: [districtA, districtB] }));
+  const expected = [
+    ...new Set(
+      works()
+        .filter((w) => w.district === districtA || w.district === districtB)
+        .map((w) => w.lac)
+        .filter((lac) => lac !== ''),
+    ),
+  ].sort();
+  assert.deepEqual(options.lac, expected);
+});
+
 test('selections that no longer exist are cleared', () => {
-  const state = recomputeDerived(baseState({ filters: createFilters({ district: 'Nonexistent District' }) }));
-  assert.equal(state.filters.district, null);
+  const state = recomputeDerived(baseState({ filters: createFilters({ district: ['Nonexistent District'] }) }));
+  assert.deepEqual(state.filters.district, []);
 });
 
 test('status counts come from the pool before the status chip is applied', () => {
@@ -183,7 +214,7 @@ test('status counts come from the pool before the status chip is applied', () =>
   );
 
   const district = works()[0].district;
-  const narrowed = recomputeDerived(baseState({ filters: createFilters({ district }) }));
+  const narrowed = recomputeDerived(baseState({ filters: createFilters({ district: [district] }) }));
   const pool = works().filter((work) => work.district === district);
   assert.equal(
     Object.values(narrowed.statusCounts).reduce((sum, count) => sum + count, 0),
@@ -218,11 +249,40 @@ test('status counts stay whole however many chips are picked', () => {
   );
 });
 
+test('ASE options are exposed for the All Engineers profile filter group', () => {
+  const state = recomputeDerived(baseState());
+  assert.ok(state.aseOptions.every((option) => works().some((work) => work.ase === option)));
+});
+
+test('pruneSelections drops a value no longer present in its computed options', () => {
+  const options = computeDropdownOptions(works(), createFilters());
+  const pruned = pruneSelections(createFilters({ lac: ['Nonexistent LAC'] }), options);
+  assert.deepEqual(pruned.lac, []);
+});
+
+test('picking a District cascades LAC options the way the filter sheet does, dropping a now-stale LAC pick', () => {
+  // Mirrors filterSheet.js's render(): the just-picked field (District) is kept as-is, and every
+  // other field is re-cascaded and pruned against it — never the other way around, so a fresh
+  // pick is never undone by a selection made before it.
+  const district = works()[0].district;
+  const otherLac = works().find((w) => w.district !== district && w.lac !== '').lac;
+  const selection = createFilters({ district: [district], lac: [otherLac] });
+
+  const options = computeDropdownOptions(works(), selection);
+  const afterPruningEverythingButDistrict = {
+    ...selection,
+    lac: selection.lac.filter((value) => options.lac.includes(value)),
+  };
+
+  assert.deepEqual(afterPruningEverythingButDistrict.lac, [], 'a LAC from another district falls out of the cascade');
+  assert.deepEqual(afterPruningEverythingButDistrict.district, [district], 'the just-picked field is never pruned');
+});
+
 test('hasAnyFilter tracks search, dropdowns and the status chip', () => {
   assert.equal(hasAnyFilter(baseState()), false);
   assert.equal(hasAnyFilter(baseState({ searchQuery: 'court' })), true);
   assert.equal(hasAnyFilter(baseState({ filters: createFilters({ statusCodes: ['06'] }) })), true);
-  assert.equal(hasAnyFilter(baseState({ filters: createFilters({ lac: 'Tarur' }) })), true);
+  assert.equal(hasAnyFilter(baseState({ filters: createFilters({ lac: ['Tarur'] }) })), true);
 });
 
 /* ---------------- Chip order (StatusChipOrderTest.kt) ---------------- */
@@ -458,15 +518,15 @@ test('applying filters keeps the active status chip, clearing resets everything'
   await viewModel.start();
 
   viewModel.onStatusChipSelected('04');
-  viewModel.applyFilters(createFilters({ district: '11 Kozhikode' }));
+  viewModel.applyFilters(createFilters({ district: ['11 Kozhikode'] }));
   assert.deepEqual(viewModel.getState().filters.statusCodes, ['04']);
-  assert.equal(viewModel.getState().filters.district, '11 Kozhikode');
+  assert.deepEqual(viewModel.getState().filters.district, ['11 Kozhikode']);
 
   viewModel.onSearchQueryChange('mini');
   viewModel.clearAllFilters();
   const cleared = viewModel.getState();
   assert.equal(cleared.searchQuery, '');
-  assert.equal(cleared.filters.district, null);
+  assert.deepEqual(cleared.filters.district, []);
   assert.deepEqual(cleared.filters.statusCodes, []);
 });
 

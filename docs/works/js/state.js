@@ -5,48 +5,96 @@
 
 import { DEFAULT_PROFILE_ID, STATUS_SHORT_LABELS, profileById } from './config.js';
 
+/** The dropdown filter groups, each keyed by the `filters` field and the matching `Work` field. */
+export const DROPDOWN_FIELDS = [
+  ['District', 'district'],
+  ['LAC', 'lac'],
+  ['SE', 'se'],
+  ['AS Status', 'asStatus'],
+  ['AR Status', 'arStatus'],
+  ['SR Status', 'srStatus'],
+  ['ASE', 'ase'],
+];
+
 /**
- * Active filter selections. `null` means "no restriction" (i.e. "All") for the single-choice
- * dropdowns; `statusCodes` is a multi-select, where an empty list means "every status".
+ * Active filter selections. Every dropdown filter is a multi-select, where an empty array means
+ * "no restriction" (i.e. "All"); picking several values widens the match to any of them.
+ * `statusCodes` is the design-status chip selection, same convention.
  */
 export function createFilters(overrides = {}) {
   return {
-    district: null,
-    lac: null,
-    se: null,
-    asStatus: null,
-    arStatus: null,
-    srStatus: null,
+    district: [],
+    lac: [],
+    se: [],
+    asStatus: [],
+    arStatus: [],
+    srStatus: [],
+    ase: [],
     statusCodes: [],
     ...overrides,
   };
 }
 
+/** A multi-select filter matches when nothing is picked, or the value is one of the picks. */
+export function matchesMulti(value, selected) {
+  return !selected || selected.length === 0 || selected.includes(value);
+}
+
 /** Design-status chips are additive: no chip picked means every status is in scope. */
 export function matchesStatusSelection(work, statusCodes) {
-  return statusCodes.length === 0 || statusCodes.includes(work.statusCode);
+  return matchesMulti(work.statusCode, statusCodes);
 }
 
 export function hasDropdownFilters(filters) {
-  return (
-    filters.district !== null ||
-    filters.lac !== null ||
-    filters.se !== null ||
-    filters.asStatus !== null ||
-    filters.arStatus !== null ||
-    filters.srStatus !== null
-  );
+  return DROPDOWN_FIELDS.some(([, key]) => filters[key].length > 0);
 }
 
 export function countActiveDropdownFilters(filters) {
-  return [filters.district, filters.lac, filters.se, filters.asStatus, filters.arStatus, filters.srStatus].filter(
-    (value) => value !== null,
-  ).length;
+  return DROPDOWN_FIELDS.reduce((sum, [, key]) => sum + filters[key].length, 0);
 }
 
 export function hasAnyFilter(state) {
   return hasDropdownFilters(state.filters) || state.searchQuery.trim() !== '' || state.filters.statusCodes.length > 0;
 }
+
+export function matchesSearchQuery(work, query) {
+  const q = query.trim().toLowerCase();
+  return (
+    q === '' ||
+    work.workName.toLowerCase().includes(q) ||
+    work.fileNumber.toLowerCase().includes(q) ||
+    work.lac.toLowerCase().includes(q) ||
+    work.remarks.toLowerCase().includes(q)
+  );
+}
+
+/**
+ * Distinct, sorted values for every dropdown field, each one computed against `works` with every
+ * *other* dropdown filter applied (but not its own), so picking a value in one group narrows the
+ * choices offered in the rest — e.g. picking a District narrows the LAC options to that
+ * District's LACs. Used both for the committed global filter options and for the live preview
+ * inside the filter sheet while the user is still choosing.
+ */
+export function computeDropdownOptions(works, filters) {
+  const options = {};
+  for (const [, key] of DROPDOWN_FIELDS) {
+    const pool = works.filter((work) =>
+      DROPDOWN_FIELDS.every(([, otherKey]) => otherKey === key || matchesMulti(work[otherKey], filters[otherKey])),
+    );
+    options[key] = distinctOptions(pool, (w) => w[key]);
+  }
+  return options;
+}
+
+/** Drops any selections that fell outside their (possibly narrowed) options, e.g. after a cascade. */
+export function pruneSelections(filters, options) {
+  const pruned = { ...filters };
+  for (const [, key] of DROPDOWN_FIELDS) pruned[key] = filters[key].filter((value) => options[key].includes(value));
+  return pruned;
+}
+
+const distinctOptions = (works, selector) =>
+  [...new Set(works.map(selector).filter((value) => value.trim() !== ''))].sort(compareStrings);
 
 export function createUiState(overrides = {}) {
   return {
@@ -64,6 +112,7 @@ export function createUiState(overrides = {}) {
     asStatusOptions: [],
     arStatusOptions: [],
     srStatusOptions: [],
+    aseOptions: [],
     statusCounts: {},
     /** Persisted display order for design-status filter chips (two-digit codes, 01…09). */
     statusChipOrder: Object.keys(STATUS_SHORT_LABELS),
@@ -82,60 +131,15 @@ export function createUiState(overrides = {}) {
  * Call after any change to those three inputs.
  */
 export function recomputeDerived(state) {
-  const query = state.searchQuery.trim().toLowerCase();
   const { filters } = state;
+  const searchedWorks = state.allWorks.filter((work) => matchesSearchQuery(work, state.searchQuery));
 
-  const matchesSearch = (work) =>
-    query === '' ||
-    work.workName.toLowerCase().includes(query) ||
-    work.fileNumber.toLowerCase().includes(query) ||
-    work.lac.toLowerCase().includes(query) ||
-    work.remarks.toLowerCase().includes(query);
-
-  const filterWorks = (overrides = {}) => {
-    const active = { ...filters, ...overrides };
-    return state.allWorks.filter(
-      (work) =>
-        matchesSearch(work) &&
-        (active.district === null || work.district === active.district) &&
-        (active.lac === null || work.lac === active.lac) &&
-        (active.se === null || work.se === active.se) &&
-        (active.asStatus === null || work.asStatus === active.asStatus) &&
-        (active.arStatus === null || work.arStatus === active.arStatus) &&
-        (active.srStatus === null || work.srStatus === active.srStatus) &&
-        matchesStatusSelection(work, active.statusCodes),
-    );
-  };
-
-  const distinctOptions = (works, selector) =>
-    [...new Set(works.map(selector).filter((value) => value.trim() !== ''))].sort(compareStrings);
-
-  const districtOptions = distinctOptions(filterWorks({ district: null }), (w) => w.district);
-  const lacOptions = distinctOptions(filterWorks({ lac: null }), (w) => w.lac);
-  const seOptions = distinctOptions(filterWorks({ se: null }), (w) => w.se);
-  const asStatusOptions = distinctOptions(filterWorks({ asStatus: null }), (w) => w.asStatus);
-  const arStatusOptions = distinctOptions(filterWorks({ arStatus: null }), (w) => w.arStatus);
-  const srStatusOptions = distinctOptions(filterWorks({ srStatus: null }), (w) => w.srStatus);
-
-  const keepIfPresent = (value, options) => (value !== null && options.includes(value) ? value : null);
-  const sanitizedFilters = {
-    ...filters,
-    district: keepIfPresent(filters.district, districtOptions),
-    lac: keepIfPresent(filters.lac, lacOptions),
-    se: keepIfPresent(filters.se, seOptions),
-    asStatus: keepIfPresent(filters.asStatus, asStatusOptions),
-    arStatus: keepIfPresent(filters.arStatus, arStatusOptions),
-    srStatus: keepIfPresent(filters.srStatus, srStatusOptions),
-  };
+  const options = computeDropdownOptions(searchedWorks, filters);
+  const sanitizedFilters = pruneSelections(filters, options);
 
   const matchesDropdowns = (work) =>
-    matchesSearch(work) &&
-    (sanitizedFilters.district === null || work.district === sanitizedFilters.district) &&
-    (sanitizedFilters.lac === null || work.lac === sanitizedFilters.lac) &&
-    (sanitizedFilters.se === null || work.se === sanitizedFilters.se) &&
-    (sanitizedFilters.asStatus === null || work.asStatus === sanitizedFilters.asStatus) &&
-    (sanitizedFilters.arStatus === null || work.arStatus === sanitizedFilters.arStatus) &&
-    (sanitizedFilters.srStatus === null || work.srStatus === sanitizedFilters.srStatus);
+    matchesSearchQuery(work, state.searchQuery) &&
+    DROPDOWN_FIELDS.every(([, key]) => matchesMulti(work[key], sanitizedFilters[key]));
 
   const filtered = state.allWorks.filter(
     (work) => matchesDropdowns(work) && matchesStatusSelection(work, sanitizedFilters.statusCodes),
@@ -150,14 +154,15 @@ export function recomputeDerived(state) {
 
   return {
     ...state,
-    filters: sanitizedFilters,
+    filters: { ...sanitizedFilters, statusCodes: filters.statusCodes },
     filteredWorks: filtered,
-    districtOptions,
-    lacOptions,
-    seOptions,
-    asStatusOptions,
-    arStatusOptions,
-    srStatusOptions,
+    districtOptions: options.district,
+    lacOptions: options.lac,
+    seOptions: options.se,
+    asStatusOptions: options.asStatus,
+    arStatusOptions: options.arStatus,
+    srStatusOptions: options.srStatus,
+    aseOptions: options.ase,
     statusCounts,
   };
 }
