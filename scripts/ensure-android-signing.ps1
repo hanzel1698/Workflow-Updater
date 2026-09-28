@@ -7,6 +7,27 @@ $PropsPath = Join-Path $SigningDir "signing.properties"
 
 New-Item -ItemType Directory -Force -Path $SigningDir | Out-Null
 
+function Resolve-KeytoolPath {
+    $fromPath = Get-Command keytool -ErrorAction SilentlyContinue
+    if ($fromPath) { return $fromPath.Source }
+    $candidates = @(
+        "$env:JAVA_HOME\bin\keytool.exe",
+        "${env:ProgramFiles}\Android\Android Studio\jbr\bin\keytool.exe",
+        "${env:ProgramFiles}\Java\*\bin\keytool.exe"
+    )
+    foreach ($pattern in $candidates) {
+        $match = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($match) { return $match.FullName }
+    }
+    return $null
+}
+
+$keytool = Resolve-KeytoolPath
+if (-not $keytool) {
+    Write-Host "[X] keytool not found. Install JDK or Android Studio." -ForegroundColor Red
+    exit 1
+}
+
 if ((Test-Path $KeystorePath) -and (Test-Path $PropsPath)) {
     Write-Host "[OK] Upload keystore already exists: $KeystorePath" -ForegroundColor Green
     exit 0
@@ -31,17 +52,18 @@ $keytoolArgs = @(
     "-dname", $dname
 )
 
-& keytool @keytoolArgs
+& $keytool @keytoolArgs
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[X] keytool failed. Install JDK and ensure keytool is on PATH." -ForegroundColor Red
     exit 1
 }
 
-@"
+$content = @"
 storePassword=$storePassword
 keyAlias=$keyAlias
 keyPassword=$keyPassword
-"@ | Set-Content -Path $PropsPath -Encoding UTF8
+"@
+[System.IO.File]::WriteAllText($PropsPath, $content)
 
 Write-Host ""
 Write-Host "[OK] Upload keystore created." -ForegroundColor Green
