@@ -3,7 +3,116 @@
  * Handles state, fetch/sync, profile-filtering, searching, and optimistic updates.
  */
 
+/**
+ * Desktop-PC layout gate.
+ *
+ * Stamps `data-device="desktop"` or `"compact"` on <html> so style.css can hand a mouse-driven PC
+ * the whole window instead of the centred 1440px column. A desktop PC means a fine pointer and a
+ * window at least 900px wide — not merely a big screen, so a tablet in landscape keeps the compact
+ * layout, iPadOS included (Safari there sends a Mac user-agent string, but still a coarse pointer).
+ *
+ * Runs at parse time rather than on DOMContentLoaded so the layout is settled before the first
+ * paint. Same rules as docs/works/js/ui/deviceLayout.js — keep the two in step.
+ */
+(function gateDesktopLayout() {
+  const DESKTOP_MIN_WIDTH = 900;
+  const query =
+    typeof window.matchMedia === 'function' ? window.matchMedia('(hover: hover) and (pointer: fine)') : null;
+
+  function isDesktopPc() {
+    // Chromium tells us outright; nothing else can overrule it.
+    if (window.navigator.userAgentData && window.navigator.userAgentData.mobile === true) return false;
+    if ((window.innerWidth || 0) < DESKTOP_MIN_WIDTH) return false;
+    // No pointer media queries (pre-2015 browsers): a window this wide with no touch digitizer is a PC.
+    if (!query) return (window.navigator.maxTouchPoints || 0) === 0;
+    return query.matches;
+  }
+
+  function update() {
+    document.documentElement.dataset.device = isDesktopPc() ? 'desktop' : 'compact';
+  }
+
+  update();
+  window.addEventListener('resize', update, { passive: true });
+  if (query) {
+    // Safari before 14 only has the deprecated listener API.
+    if (query.addEventListener) query.addEventListener('change', update);
+    else if (query.addListener) query.addListener(update);
+  }
+})();
+
+/**
+ * Dark / light theme gate.
+ *
+ * Runs at parse time, before the first paint, so a light-theme user never sees a dark flash.
+ * A stored choice wins; with none, the dashboard follows the operating system exactly as the
+ * works viewer does. Both branches only stamp `data-theme` — every colour lives in style.css.
+ */
+(function gateTheme() {
+  const THEME_KEY = 'wu.theme';
+  let stored = null;
+  try {
+    stored = window.localStorage.getItem(THEME_KEY);
+  } catch (err) {
+    stored = null; // private mode — the system preference still applies
+  }
+  if (stored === 'light' || stored === 'dark') {
+    document.documentElement.dataset.theme = stored;
+  }
+})();
+
 const CONFIG = window.CONFIG;
+
+/**
+ * Maps a two-digit design-status code ("01".."09") to one of the five semantic tones that
+ * style.css colours through `[data-tone]`. The same mapping as docs/works/js/ui/statusTone.js
+ * and android/.../ui/common/StatusColors.kt — keep the three in step.
+ */
+function statusTone(code) {
+  switch (code) {
+    case '01':
+    case '04':
+      return 'info';
+    case '02':
+    case '05':
+      return 'warning';
+    case '03':
+    case '06':
+      return 'success';
+    case '08':
+    case '09':
+      return 'danger';
+    default:
+      return 'neutral';
+  }
+}
+
+/** The tone for a full status string ("04 Detailed Design Ongoing"), read from its code prefix. */
+function statusToneForLabel(status) {
+  return statusTone((status || '').toString().trim().substring(0, 2));
+}
+
+/**
+ * Badge wording. The sheet's status strings are long ("04 Detailed Design Ongoing") and would
+ * wrap a card badge onto two lines, so badges carry the short form the works viewer and the
+ * Android app already use. Anything unrecognised is shown as the sheet wrote it.
+ */
+const STATUS_SHORT_LABELS = {
+  '01': 'Tentative Ongoing',
+  '02': 'Tentative On Hold',
+  '03': 'Tentative Issued',
+  '04': 'Detailed Ongoing',
+  '05': 'Detailed On Hold',
+  '06': 'Detailed Issued',
+  '07': 'File Not Opened',
+  '08': 'Discarded',
+  '09': 'Returned to Site'
+};
+
+function shortStatusLabel(status) {
+  const text = (status || '').toString().trim();
+  return STATUS_SHORT_LABELS[text.substring(0, 2)] || text;
+}
 
 // Application State
 let state = {
@@ -12,7 +121,9 @@ let state = {
   dropdownOptions: {},
   searchQuery: '',
   isSimulationMode: CONFIG.SIMULATION_MODE || !CONFIG.SCRIPT_URL,
-  activeStatusFilter: 'ALL',
+  // Design-status KPI chips are a multi-select: each click toggles one code in or out, and an
+  // empty set means every status is in scope (the "All works" chip).
+  selectedStatuses: new Set(),
   activeView: 'LIST', // 'LIST', 'CALENDAR', 'ANALYTICS'
   currentMonth: new Date(),
   activityLogs: [],
@@ -23,7 +134,9 @@ let state = {
     arStatus: 'ALL',
     srStatus: 'ALL'
   },
-  expandedGroups: new Set(),
+  // Status groups the user has folded away. Everything not in here is open — a dashboard that
+  // opens on nothing but headers has hidden the very thing it is for.
+  collapsedGroups: new Set(),
   activeProfileId: localStorage.getItem('activeProfileId') || CONFIG.DEFAULT_PROFILE_ID || 'AD'
 };
 
@@ -127,23 +240,75 @@ function withSpreadsheetId(payload) {
   return payload;
 }
 
-// Parse sheet date strings (DD/MM/YYYY or ISO) into YYYY-MM-DD for date inputs
-function parseSheetDateToInput(rawDate) {
-  if (!rawDate) return '';
+// The sheet delivers date cells as ISO-8601 instants (e.g. "2026-09-01T18:30:00.000Z"), which are
+// midnight in India Standard Time. Reading them in the browser's own zone only happens to work on a
+// device already set to IST, so the zone is pinned here.
+const SHEET_TIME_ZONE = 'Asia/Kolkata';
+
+const SHEET_DATE_PARTS_FORMATTER = new Intl.DateTimeFormat('en-GB', {
+  timeZone: SHEET_TIME_ZONE,
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric'
+});
+
+// Plain day/month/year already in the sheet's DD/MM/YYYY convention, e.g. "07/01/2025" or "7-1-2025".
+const SHEET_DAY_MONTH_YEAR = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/;
+
+// ISO date without a time component, e.g. "2025-01-07" — what our own date inputs write back.
+const SHEET_ISO_DATE_ONLY = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+
+/**
+ * Single reader for every date cell coming back from the sheet: the edit modal, the exports, the
+ * task cards and the calendar all resolve a date the same way, so they cannot drift a day apart.
+ *
+ * Returns {day, month, year} as Google Sheets shows it, or null for free text (a Target Date like
+ * "After getting intimation from field officials") so callers can pass it through untouched.
+ *
+ * Same rules as SheetDateFormatter in docs/works/js/model.js — keep the two in step.
+ */
+function sheetDateParts(rawDate) {
+  if (rawDate === null || rawDate === undefined) return null;
+
+  if (rawDate instanceof Date) {
+    return isNaN(rawDate.getTime()) ? null : sheetDatePartsFromInstant(rawDate);
+  }
+
   const str = rawDate.toString().trim();
-  if (!str) return '';
+  if (!str || str.toLowerCase() === 'null') return null;
 
-  const slashMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (slashMatch) {
-    const [, day, month, year] = slashMatch;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  // ISO-8601 timestamp (has a time component): an instant, so resolve it in the sheet's zone.
+  if (str.includes('T')) {
+    const millis = Date.parse(str);
+    if (isFinite(millis)) return sheetDatePartsFromInstant(new Date(millis));
   }
 
-  const d = new Date(str);
-  if (!isNaN(d.getTime())) {
-    return d.toISOString().split('T')[0];
-  }
-  return '';
+  // Already a calendar day: read the fields directly, no zone shifting.
+  const iso = SHEET_ISO_DATE_ONLY.exec(str);
+  if (iso) return { day: Number(iso[3]), month: Number(iso[2]), year: Number(iso[1]) };
+
+  // Day-first text, which Date.parse would otherwise read as month-first and swap.
+  const dmy = SHEET_DAY_MONTH_YEAR.exec(str);
+  if (dmy) return { day: Number(dmy[1]), month: Number(dmy[2]), year: Number(dmy[3]) };
+
+  return null;
+}
+
+function sheetDatePartsFromInstant(date) {
+  const parts = {};
+  SHEET_DATE_PARTS_FORMATTER.formatToParts(date).forEach(part => {
+    if (part.type === 'day' || part.type === 'month' || part.type === 'year') {
+      parts[part.type] = Number(part.value);
+    }
+  });
+  return parts;
+}
+
+// Parse sheet date values into YYYY-MM-DD for date inputs
+function parseSheetDateToInput(rawDate) {
+  const parts = sheetDateParts(rawDate);
+  if (!parts) return '';
+  return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
 }
 
 // Resolve dropdown options from live sheet response or config fallback
@@ -223,48 +388,169 @@ function applyDropdownOptionsToForms() {
 }
 
 function updateFilterStatusDropdowns() {
-  const opts = state.dropdownOptions;
-  if (!opts) return;
+  // Filter-bar AS/AR/SR selects are populated from loaded tasks in populateDynamicFilters().
+}
 
+/** The selected status codes in canonical 01…09 order, so every consumer reads them the same way. */
+function selectedStatusCodes() {
+  return CONFIG.STATUS_OPTIONS
+    .map(option => option.substring(0, 2))
+    .filter(code => state.selectedStatuses.has(code));
+}
+
+/** No chip picked means "every status", not "no status". */
+function matchesStatusSelection(task) {
+  if (state.selectedStatuses.size === 0) return true;
+  const status = getRowValue(task, CONFIG.COLUMNS.STATUS).toString().trim();
+  return state.selectedStatuses.has(status.substring(0, 2));
+}
+
+function hasAnyActiveFilter() {
+  return !!state.searchQuery ||
+    state.selectedStatuses.size > 0 ||
+    state.filters.district !== 'ALL' ||
+    state.filters.lac !== 'ALL' ||
+    state.filters.asStatus !== 'ALL' ||
+    state.filters.arStatus !== 'ALL' ||
+    state.filters.srStatus !== 'ALL';
+}
+
+function getWorksForFilterOptions(excludeFilter) {
+  const colKeys = CONFIG.COLUMNS;
+  return state.tasks.filter(task => {
+    if (state.searchQuery) {
+      const fileNum = getRowValue(task, colKeys.FILE_NUMBER).toString().toLowerCase();
+      const workName = getRowValue(task, colKeys.WORK_NAME).toString().toLowerCase();
+      const lac = getRowValue(task, colKeys.LAC).toString().toLowerCase();
+      const remarks = getRowValue(task, colKeys.REMARKS).toString().toLowerCase();
+
+      const match =
+        fileNum.includes(state.searchQuery) ||
+        workName.includes(state.searchQuery) ||
+        lac.includes(state.searchQuery) ||
+        remarks.includes(state.searchQuery);
+
+      if (!match) return false;
+    }
+
+    if (excludeFilter !== 'status' && !matchesStatusSelection(task)) return false;
+
+    if (excludeFilter !== 'district' && state.filters.district !== 'ALL') {
+      const dist = getRowValue(task, colKeys.DISTRICT).toString().trim();
+      if (dist !== state.filters.district) return false;
+    }
+    if (excludeFilter !== 'lac' && state.filters.lac !== 'ALL') {
+      const lacVal = getRowValue(task, colKeys.LAC).toString().trim();
+      if (lacVal !== state.filters.lac) return false;
+    }
+    if (excludeFilter !== 'asStatus' && state.filters.asStatus !== 'ALL') {
+      const asVal = getRowValue(task, colKeys.AS_STATUS).toString().trim();
+      if (asVal !== state.filters.asStatus) return false;
+    }
+    if (excludeFilter !== 'arStatus' && state.filters.arStatus !== 'ALL') {
+      const arVal = getRowValue(task, colKeys.AR_STATUS).toString().trim();
+      if (arVal !== state.filters.arStatus) return false;
+    }
+    if (excludeFilter !== 'srStatus' && state.filters.srStatus !== 'ALL') {
+      const srVal = getRowValue(task, colKeys.SR_STATUS).toString().trim();
+      if (srVal !== state.filters.srStatus) return false;
+    }
+
+    return true;
+  });
+}
+
+function collectDistinctValues(works, columnKey) {
+  const values = new Set();
+  works.forEach(task => {
+    const val = getRowValue(task, columnKey);
+    if (val !== null && val !== undefined) {
+      const trimmed = val.toString().trim();
+      if (trimmed) values.add(trimmed);
+    }
+  });
+  return Array.from(values).sort();
+}
+
+function repopulateFilterSelect(selectEl, allLabel, values, stateKey) {
+  if (!selectEl) return;
+
+  const currentVal = selectEl.value;
+  selectEl.innerHTML = `<option value="ALL">${allLabel}</option>`;
+  values.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v;
+    selectEl.appendChild(opt);
+  });
+
+  if (values.includes(currentVal)) {
+    selectEl.value = currentVal;
+  } else {
+    selectEl.value = 'ALL';
+    state.filters[stateKey] = 'ALL';
+  }
+
+  const filterItem = selectEl.closest('.filter-item');
+  if (filterItem) {
+    filterItem.style.display = values.length > 0 ? 'flex' : 'none';
+  }
+}
+
+function updateFilterResultChip(filteredCount, totalCount) {
+  const chip = dom.filterResultChip;
+  if (!chip) return;
+
+  if (!hasAnyActiveFilter()) {
+    chip.style.display = 'none';
+    return;
+  }
+
+  chip.style.display = 'flex';
+  const countEl = chip.querySelector('.filter-result-count');
+  if (!countEl) return;
+
+  if (filteredCount === totalCount) {
+    countEl.textContent = `${filteredCount} ${filteredCount === 1 ? 'work' : 'works'} match your filters`;
+  } else {
+    countEl.textContent = `${filteredCount} of ${totalCount} ${totalCount === 1 ? 'work' : 'works'} match your filters`;
+  }
+}
+
+function clearAllFilters() {
+  state.searchQuery = '';
+  state.selectedStatuses.clear();
+  state.filters = {
+    district: 'ALL',
+    lac: 'ALL',
+    asStatus: 'ALL',
+    arStatus: 'ALL',
+    srStatus: 'ALL'
+  };
+  state.collapsedGroups.clear();
+
+  dom.searchInput.value = '';
+  const dbSearchInput = document.getElementById('dashboard-search-input');
+  if (dbSearchInput) dbSearchInput.value = '';
+
+  const filterDistrict = document.getElementById('filter-district');
+  const filterLac = document.getElementById('filter-lac');
   const filterAsStatus = document.getElementById('filter-as-status');
   const filterArStatus = document.getElementById('filter-ar-status');
   const filterSrStatus = document.getElementById('filter-sr-status');
+  const resetFiltersBtn = document.getElementById('reset-filters-btn');
 
-  if (filterAsStatus) {
-    const current = filterAsStatus.value;
-    filterAsStatus.innerHTML = '<option value="ALL">All AS Status</option>';
-    (opts.asStatus || []).forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      filterAsStatus.appendChild(opt);
-    });
-    filterAsStatus.value = current && Array.from(filterAsStatus.options).some(o => o.value === current) ? current : 'ALL';
-  }
+  if (filterDistrict) filterDistrict.value = 'ALL';
+  if (filterLac) filterLac.value = 'ALL';
+  if (filterAsStatus) filterAsStatus.value = 'ALL';
+  if (filterArStatus) filterArStatus.value = 'ALL';
+  if (filterSrStatus) filterSrStatus.value = 'ALL';
+  if (resetFiltersBtn) resetFiltersBtn.style.display = 'none';
 
-  if (filterArStatus) {
-    const current = filterArStatus.value;
-    filterArStatus.innerHTML = '<option value="ALL">All AR Status</option>';
-    (opts.arStatus || []).forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      filterArStatus.appendChild(opt);
-    });
-    filterArStatus.value = current && Array.from(filterArStatus.options).some(o => o.value === current) ? current : 'ALL';
-  }
+  syncStatusChipHighlight();
 
-  if (filterSrStatus) {
-    const current = filterSrStatus.value;
-    filterSrStatus.innerHTML = '<option value="ALL">All SR Status</option>';
-    (opts.srStatus || []).forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      filterSrStatus.appendChild(opt);
-    });
-    filterSrStatus.value = current && Array.from(filterSrStatus.options).some(o => o.value === current) ? current : 'ALL';
-  }
+  renderDashboard();
+  showToast('All filters cleared', 'info');
 }
 
 // Map spreadsheet category code to full status string
@@ -339,6 +625,8 @@ const dom = {
   
   // Stats
   statTotal: document.getElementById('stat-total').querySelector('.number'),
+  filterResultChip: document.getElementById('filter-result-chip'),
+  clearAllFiltersBtn: document.getElementById('clear-all-filters-btn'),
   statCards: {
     "01": document.getElementById('stat-01').querySelector('.number'),
     "02": document.getElementById('stat-02').querySelector('.number'),
@@ -398,8 +686,8 @@ const dom = {
 function init() {
   setupUIThemeAndDropdowns();
   setupEventListeners();
-  // Highlight Total Works stat card by default
-  document.getElementById('stat-total').classList.add('active');
+  // Every work is in scope until a chip is clicked
+  syncStatusChipHighlight();
   loadData();
   logActivity('Workflow Updater initialized in Simulation Mode', 'info');
 }
@@ -408,9 +696,75 @@ function init() {
 function setupUIThemeAndDropdowns() {
   updateSimulationToggleUI();
   renderProfileSwitcher();
+  setupThemeToggle();
 
   state.dropdownOptions = resolveDropdownOptions(CONFIG.MOCK_DROPDOWNS);
   applyDropdownOptionsToForms();
+}
+
+/**
+ * Wires the header's theme button. The gate at the top of this file has already applied any
+ * stored choice; this only flips it and writes the new one down. Clicking always sets an
+ * explicit theme — once you have expressed a preference, the system stops overruling it.
+ */
+function setupThemeToggle() {
+  const btn = document.getElementById('theme-toggle-btn');
+  if (!btn) return;
+
+  const prefersLight =
+    typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  btn.addEventListener('click', () => {
+    const current = document.documentElement.dataset.theme || (prefersLight ? 'light' : 'dark');
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+    try {
+      window.localStorage.setItem('wu.theme', next);
+    } catch (err) {
+      /* private mode — the theme still applies for this session */
+    }
+  });
+}
+
+/**
+ * Slide the Add button away while the page is scrolled down, and bring it back on the way up.
+ *
+ * A phone has no width to give the button a lane of its own, so it floats over the list;
+ * stepping aside while you read is how it stops covering anything. It stays in the tab order
+ * while hidden and reappears on focus, so it is never lost to a keyboard.
+ */
+function setupFabScrollBehavior() {
+  const fab = dom.openAddModalBtn;
+  if (!fab) return;
+
+  const HIDE_BELOW_PX = 120; // stay put while the top of the page is still in view
+  const DEADZONE_PX = 8; // ignore trackpad jitter and rubber-band bounce
+
+  let lastY = window.scrollY;
+  let queued = false;
+
+  function apply() {
+    queued = false;
+    const y = Math.max(window.scrollY, 0);
+    const delta = y - lastY;
+    if (Math.abs(delta) < DEADZONE_PX) return;
+    lastY = y;
+    // Never pull it out from under a keyboard user who is on it.
+    const hide = delta > 0 && y > HIDE_BELOW_PX && document.activeElement !== fab;
+    fab.classList.toggle('fab-hidden', hide);
+  }
+
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(apply);
+    },
+    { passive: true },
+  );
+
+  fab.addEventListener('focus', () => fab.classList.remove('fab-hidden'));
 }
 
 // Attach event listeners
@@ -498,6 +852,8 @@ function setupEventListeners() {
     });
   }
 
+  setupFabScrollBehavior();
+
   // Add Modal Toggles
   dom.openAddModalBtn.addEventListener('click', () => {
     dom.addTaskForm.reset();
@@ -523,9 +879,9 @@ function setupEventListeners() {
   dom.addTaskForm.addEventListener('submit', handleAddTaskSubmit);
   dom.editTaskForm.addEventListener('submit', handleEditTaskSubmit);
 
-  // Active Stat Cards clicks for Filter updates
+  // Active Stat Cards clicks for Filter updates — each click toggles that status in or out
   document.getElementById('stat-total').addEventListener('click', () => {
-    setActiveStatusFilter('ALL');
+    toggleStatusFilter('ALL');
   });
 
   for (let i = 1; i <= 9; i++) {
@@ -533,9 +889,13 @@ function setupEventListeners() {
     const el = document.getElementById(`stat-${prefix}`);
     if (el) {
       el.addEventListener('click', () => {
-        setActiveStatusFilter(prefix);
+        toggleStatusFilter(prefix);
       });
     }
+  }
+
+  if (dom.clearAllFiltersBtn) {
+    dom.clearAllFiltersBtn.addEventListener('click', clearAllFilters);
   }
 
   // View Switchers Event Listeners
@@ -638,44 +998,61 @@ function setupEventListeners() {
   });
 }
 
-// Active Stat/Filter Handler
-function setActiveStatusFilter(prefix) {
-  state.activeStatusFilter = prefix;
-  
-  // Clear explicit group expansions on filter change
-  state.expandedGroups.clear();
-  
-  // If filtering to a specific group, ensure it starts expanded
-  if (prefix !== 'ALL') {
-    const matchedOpt = CONFIG.STATUS_OPTIONS.find(o => o.startsWith(prefix));
-    if (matchedOpt) {
-      state.expandedGroups.add(matchedOpt);
-    }
-  }
-  
-  // Remove active class from all stat cards
-  document.getElementById('stat-total').classList.remove('active');
-  for (let i = 1; i <= 9; i++) {
-    const p = i.toString().padStart(2, '0');
-    const el = document.getElementById(`stat-${p}`);
-    if (el) el.classList.remove('active');
-  }
-  
-  // Add active class to clicked card
+/**
+ * Adds or removes one KPI chip from the status selection; 'ALL' clears it. Chips are additive, so
+ * picking a second one widens the list to both statuses rather than replacing the first.
+ */
+function toggleStatusFilter(prefix) {
   if (prefix === 'ALL') {
-    document.getElementById('stat-total').classList.add('active');
-    showToast('Viewing all project tasks', 'info');
+    state.selectedStatuses.clear();
+  } else if (state.selectedStatuses.has(prefix)) {
+    state.selectedStatuses.delete(prefix);
   } else {
-    const el = document.getElementById(`stat-${prefix}`);
-    if (el) {
-      el.classList.add('active');
-      const labelText = el.querySelector('.label').textContent;
-      showToast(`Filtered list to status: ${labelText}`, 'info');
-    }
+    state.selectedStatuses.add(prefix);
   }
-  
+
+  // Every group opens again on a filter change — including the one just filtered to.
+  state.collapsedGroups.clear();
+
+  syncStatusChipHighlight();
+  showToast(describeStatusSelection(), 'info');
+
   // Re-render dashboard
   renderDashboard();
+}
+
+/** Reads the current selection back as a sentence for the toast. */
+function describeStatusSelection() {
+  const labels = selectedStatusCodes().map(code => {
+    const chip = document.getElementById(`stat-${code}`);
+    return chip ? chip.querySelector('.label').textContent : code;
+  });
+
+  if (labels.length === 0) return 'Viewing all project tasks';
+  if (labels.length === 1) return `Filtered list to status: ${labels[0]}`;
+  return `Filtered list to ${labels.length} statuses: ${labels.join(', ')}`;
+}
+
+/**
+ * Lights every picked KPI chip, and "All works" when none is. Called from every path that changes
+ * the status filter — including Clear filters, which used to leave the old chip lit while the list
+ * below it showed everything.
+ */
+function syncStatusChipHighlight() {
+  const total = document.getElementById('stat-total');
+  if (total) {
+    total.classList.toggle('active', state.selectedStatuses.size === 0);
+    total.setAttribute('aria-pressed', String(state.selectedStatuses.size === 0));
+  }
+
+  for (let i = 1; i <= 9; i++) {
+    const code = i.toString().padStart(2, '0');
+    const el = document.getElementById(`stat-${code}`);
+    if (!el) continue;
+    const picked = state.selectedStatuses.has(code);
+    el.classList.toggle('active', picked);
+    el.setAttribute('aria-pressed', String(picked));
+  }
 }
 
 // Update the state and button classes for simulation mode
@@ -732,23 +1109,29 @@ function showToast(message, type = 'success') {
   }, dismissMs - 300);
 }
 
-// Render skeleton card loaders while fetching
+// Render skeleton card loaders while fetching — same grid and shape as the cards they stand in for
 function renderSkeletons() {
-  dom.cardsContainer.innerHTML = Array(2).fill(0).map(() => `
+  const cards = Array(6).fill(0).map(() => `
     <div class="skeleton-card">
       <div class="skeleton-header">
         <div class="skeleton-item skeleton-file"></div>
         <div class="skeleton-item skeleton-badge"></div>
       </div>
       <div class="skeleton-item skeleton-title"></div>
-      <div class="skeleton-item skeleton-desc"></div>
       <div class="skeleton-item skeleton-meta"></div>
+      <div class="skeleton-item skeleton-desc"></div>
       <div class="skeleton-footer">
         <div class="skeleton-item skeleton-avatar"></div>
         <div class="skeleton-item skeleton-button"></div>
       </div>
     </div>
   `).join('');
+  dom.cardsContainer.innerHTML = `<div class="search-results-flat">${cards}</div>`;
+}
+
+/** The two-character monogram an avatar circle has room for ("ASE01" -> "AS"). */
+function profileInitials(id) {
+  return (id || '').toString().trim().replace(/[^A-Za-z0-9]/g, '').substring(0, 2).toUpperCase() || '?';
 }
 
 // Helper to retrieve active engineer profile details from config list
@@ -761,7 +1144,6 @@ function getActiveProfile() {
 function renderProfileSwitcher() {
   const container = document.getElementById('profile-switcher-container');
   const btn = document.getElementById('profile-switcher-btn');
-  const avatar = document.getElementById('active-profile-avatar');
   const text = document.getElementById('active-profile-text');
   const menu = document.getElementById('profile-dropdown-menu');
   
@@ -770,7 +1152,6 @@ function renderProfileSwitcher() {
   const activeProfile = getActiveProfile();
   
   // Update badge UI
-  if (avatar) avatar.textContent = activeProfile.id;
   if (text) text.innerHTML = `RDO KKD • <strong>${activeProfile.id}</strong>`;
   
   const headerEngineerProfile = document.getElementById('header-engineer-profile');
@@ -785,7 +1166,7 @@ function renderProfileSwitcher() {
     const emailHtml = p.email ? `<span class="profile-email">${p.email}</span>` : '';
     return `
       <button type="button" class="${itemClass}" data-profile-id="${p.id}">
-        <div class="profile-dropdown-avatar">${p.id}</div>
+        <div class="profile-dropdown-avatar">${profileInitials(p.id)}</div>
         <div class="profile-dropdown-item-details">
           <span class="profile-name">${p.name}</span>
           ${emailHtml}
@@ -836,56 +1217,26 @@ function filterTasksByProfile(allRows) {
   });
 }
 
-// Populate Dynamic Districts and LAC filters from loaded tasks
+// Populate dynamic filter dropdowns from loaded tasks (cascading by active filters)
 function populateDynamicFilters() {
   const colKeys = CONFIG.COLUMNS;
-  const districts = new Set();
-  const lacs = new Set();
-  
-  state.tasks.forEach(task => {
-    const dist = getRowValue(task, colKeys.DISTRICT);
-    const lacVal = getRowValue(task, colKeys.LAC);
-    if (dist) districts.add(dist.toString().trim());
-    if (lacVal) lacs.add(lacVal.toString().trim());
-  });
-  
-  const sortedDistricts = Array.from(districts).sort();
-  const sortedLacs = Array.from(lacs).sort();
-  
   const filterDistrict = document.getElementById('filter-district');
   const filterLac = document.getElementById('filter-lac');
-  
-  if (filterDistrict) {
-    const currentVal = filterDistrict.value;
-    filterDistrict.innerHTML = '<option value="ALL">All Districts</option>';
-    sortedDistricts.forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = d;
-      opt.textContent = d;
-      filterDistrict.appendChild(opt);
-    });
-    if (sortedDistricts.includes(currentVal)) {
-      filterDistrict.value = currentVal;
-    } else {
-      state.filters.district = 'ALL';
-    }
-  }
-  
-  if (filterLac) {
-    const currentVal = filterLac.value;
-    filterLac.innerHTML = '<option value="ALL">All LACs</option>';
-    sortedLacs.forEach(l => {
-      const opt = document.createElement('option');
-      opt.value = l;
-      opt.textContent = l;
-      filterLac.appendChild(opt);
-    });
-    if (sortedLacs.includes(currentVal)) {
-      filterLac.value = currentVal;
-    } else {
-      state.filters.lac = 'ALL';
-    }
-  }
+  const filterAsStatus = document.getElementById('filter-as-status');
+  const filterArStatus = document.getElementById('filter-ar-status');
+  const filterSrStatus = document.getElementById('filter-sr-status');
+
+  const districtValues = collectDistinctValues(getWorksForFilterOptions('district'), colKeys.DISTRICT);
+  const lacValues = collectDistinctValues(getWorksForFilterOptions('lac'), colKeys.LAC);
+  const asValues = collectDistinctValues(getWorksForFilterOptions('asStatus'), colKeys.AS_STATUS);
+  const arValues = collectDistinctValues(getWorksForFilterOptions('arStatus'), colKeys.AR_STATUS);
+  const srValues = collectDistinctValues(getWorksForFilterOptions('srStatus'), colKeys.SR_STATUS);
+
+  repopulateFilterSelect(filterDistrict, 'All Districts', districtValues, 'district');
+  repopulateFilterSelect(filterLac, 'All LACs', lacValues, 'lac');
+  repopulateFilterSelect(filterAsStatus, 'All AS Status', asValues, 'asStatus');
+  repopulateFilterSelect(filterArStatus, 'All AR Status', arValues, 'arStatus');
+  repopulateFilterSelect(filterSrStatus, 'All SR Status', srValues, 'srStatus');
 }
 
 // Fetch sheet data
@@ -964,29 +1315,54 @@ function buildProgressReportTitle(designation, engineerName) {
   return `PROGRESS REPORT - ${designation.toString().trim().toUpperCase()} - ${engineerName.toString().trim()} - AS ON ${date}.`;
 }
 
+/**
+ * The status groups an export prints, in canonical order.
+ *
+ * With KPI chips picked, a report covers exactly those statuses — every work in each one, and no
+ * group for a status that was filtered out. Printing "01 TENTATIVE DESIGN ONGOING : 0 WORKS / NIL"
+ * under a report the reader was told is about detailed design reads as a finding about the office
+ * rather than a consequence of the filter. With no chip picked nothing is excluded, so every
+ * status is listed and the empty ones stay as NIL.
+ */
+function statusOptionsForExport() {
+  if (state.selectedStatuses.size === 0) return CONFIG.STATUS_OPTIONS;
+  return CONFIG.STATUS_OPTIONS.filter(option => state.selectedStatuses.has(option.substring(0, 2)));
+}
+
+/**
+ * Names the picked statuses in the exported file. Without it a reader has no way to tell a report
+ * covering two statuses from one where the office happens to have works in only two.
+ */
+function buildReportScopeNote() {
+  const statuses = statusOptionsForExport();
+  if (statuses.length === CONFIG.STATUS_OPTIONS.length) return '';
+  return `<p class="report-scope-note">Design status: ${escapeHtml(statuses.join('; '))}</p>`;
+}
+
+/** The same note as a spreadsheet row — the Excel export is a table, with no paragraph to hang it on. */
+function buildExcelScopeNoteRow() {
+  const statuses = statusOptionsForExport();
+  if (statuses.length === CONFIG.STATUS_OPTIONS.length) return '';
+  return `
+        <tr>
+          <td colspan="14" style="text-align: center; font-size: 11pt; font-weight: bold; color: #334155; vertical-align: middle; font-family: 'Segoe UI', sans-serif;">
+            Design status: ${escapeHtml(statuses.join('; '))}
+          </td>
+        </tr>`;
+}
+
 // Format date values cleanly for export tables
 function formatDateValue(val) {
   if (!val) return '-';
-  if (val instanceof Date) {
-    const dd = String(val.getDate()).padStart(2, '0');
-    const mm = String(val.getMonth() + 1).padStart(2, '0');
-    const yyyy = val.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
+
+  const parts = sheetDateParts(val);
+  if (parts) {
+    return `${String(parts.day).padStart(2, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.year).padStart(4, '0')}`;
   }
+
+  // Free text (e.g. "After getting intimation from field officials") prints as written.
   const dateStr = val.toString().trim();
   if (!dateStr || dateStr.toLowerCase() === 'null') return '-';
-  
-  // Try to parse standard ISO format
-  try {
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime()) && dateStr.includes('-')) {
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const yyyy = d.getFullYear();
-      return `${dd}-${mm}-${yyyy}`;
-    }
-  } catch (e) {}
-
   return dateStr;
 }
 
@@ -1038,12 +1414,8 @@ function getFilteredTasks() {
       if (!match) return false;
     }
 
-    // Active Status Stat Filter
-    if (state.activeStatusFilter !== 'ALL') {
-      const status = getRowValue(task, colKeys.STATUS).toString().trim();
-      const prefix = status.substring(0, 2);
-      if (prefix !== state.activeStatusFilter) return false;
-    }
+    // Active Status Stat Filter — the union of every picked KPI chip
+    if (!matchesStatusSelection(task)) return false;
 
     // Dynamic dropdown filter fields
     if (state.filters.district !== 'ALL') {
@@ -1109,15 +1481,15 @@ function downloadPdfReport(engineerName) {
   });
   
   let tableBodyHtml = "";
-  
-  CONFIG.STATUS_OPTIONS.forEach(statusName => {
+
+  statusOptionsForExport().forEach(statusName => {
     const groupTasks = tasksByStatus[statusName] || [];
-    
+
     // Add group header row spanning all 14 columns
     const count = groupTasks.length;
     const suffix = count === 1 ? "WORK" : "WORKS";
     const headerText = `${statusName.toUpperCase()} : ${count} ${suffix}`;
-    
+
     tableBodyHtml += `
       <tr class="status-group-row">
         <td colspan="14">${headerText}</td>
@@ -1204,6 +1576,13 @@ function downloadPdfReport(engineerName) {
           font-weight: 600;
           color: #334155;
           margin: 10px 0 0 0;
+        }
+        .report-scope-note {
+          text-align: left;
+          font-size: 10pt;
+          font-weight: 600;
+          color: #334155;
+          margin: 4px 0 0 0;
         }
         table {
           width: 100%;
@@ -1298,6 +1677,7 @@ function downloadPdfReport(engineerName) {
         <h1>${escapeHtml(title)}</h1>
       </div>
       <p class="total-works-summary">Total number of works: ${totalWorks}</p>
+      ${buildReportScopeNote()}
       <table>
         <colgroup>
           <col style="width: 350px" />
@@ -1381,14 +1761,14 @@ function downloadExcelReport() {
   
   let tableBodyHtml = "";
   
-  CONFIG.STATUS_OPTIONS.forEach(statusName => {
+  statusOptionsForExport().forEach(statusName => {
     const groupTasks = tasksByStatus[statusName] || [];
-    
+
     // Add group header row spanning all 14 columns
     const count = groupTasks.length;
     const suffix = count === 1 ? "WORK" : "WORKS";
     const headerText = `${statusName.toUpperCase()} : ${count} ${suffix}`;
-    
+
     tableBodyHtml += `
       <tr class="status-group-row">
         <td colspan="14" style="background-color: #cbd5e1; font-weight: bold; color: #0f172a; border: 1px solid #94a3b8; font-size: 12pt; height: 30px; padding: 6px; vertical-align: middle; font-family: 'Segoe UI', sans-serif;">
@@ -1484,6 +1864,7 @@ function downloadExcelReport() {
             ${title}
           </td>
         </tr>
+        ${buildExcelScopeNoteRow()}
         <tr><td colspan="14" style="height: 10px;"></td></tr>
       </table>
       
@@ -1559,11 +1940,11 @@ function renderDashboard() {
   }
 
   const colKeys = CONFIG.COLUMNS;
-  
-  // Calculate dynamic stats
-  let totalCount = state.tasks.length;
-  
-  // Initialize counts for all 9 design statuses
+  const totalCount = state.tasks.length;
+  const poolForStatusChips = getWorksForFilterOptions('status');
+  const poolCount = poolForStatusChips.length;
+
+  // Count design statuses in the current filtered pool (excluding status filter)
   const statusCounts = {
     "01": 0,
     "02": 0,
@@ -1576,7 +1957,7 @@ function renderDashboard() {
     "09": 0
   };
 
-  state.tasks.forEach(task => {
+  poolForStatusChips.forEach(task => {
     const status = getRowValue(task, colKeys.STATUS).toString().trim();
     const prefix = status.substring(0, 2);
     if (statusCounts[prefix] !== undefined) {
@@ -1584,19 +1965,28 @@ function renderDashboard() {
     }
   });
 
-  // Update dynamic count statistics labels with animation
-  animateCount(dom.statTotal, totalCount);
+  // Every chip stays on screen whatever its count. A status that drops to zero is
+  // itself information ("nothing discarded"), and a grid that keeps the same chips
+  // in the same places is far easier to read than one that reshuffles on each filter.
+  animateCount(dom.statTotal, poolCount);
+
   for (const prefix in statusCounts) {
     if (dom.statCards[prefix]) {
       animateCount(dom.statCards[prefix], statusCounts[prefix]);
     }
   }
 
+  if (dom.clearAllFiltersBtn) {
+    dom.clearAllFiltersBtn.style.display = hasAnyActiveFilter() ? 'flex' : 'none';
+  }
+
   // Apply filters to task list
+  populateDynamicFilters();
   const filteredTasks = getFilteredTasks();
 
   // Update display count text
   dom.taskCountBadge.textContent = `Showing ${filteredTasks.length} of ${totalCount} works`;
+  updateFilterResultChip(filteredTasks.length, totalCount);
 
   // Render cards
   if (filteredTasks.length === 0) {
@@ -1616,11 +2006,7 @@ function renderDashboard() {
     // 1. SEARCH VIEW: Render a flat cards list to save space (no status header bars)
     const flatListContainer = document.createElement('div');
     flatListContainer.className = 'search-results-flat';
-    flatListContainer.style.display = 'flex';
-    flatListContainer.style.flexDirection = 'column';
-    flatListContainer.style.gap = '0.85rem';
-    flatListContainer.style.width = '100%';
-    
+
     filteredTasks.forEach(task => {
       const cardEl = createTaskCardElement(task);
       flatListContainer.appendChild(cardEl);
@@ -1655,28 +2041,24 @@ function renderDashboard() {
 
       const groupEl = document.createElement('section');
       
-      const isFiltered = state.activeStatusFilter === statusName.substring(0, 2);
-      const isExpanded = isFiltered || state.expandedGroups.has(statusName);
+      const isFiltered = state.selectedStatuses.has(statusName.substring(0, 2));
+      const isExpanded = isFiltered || !state.collapsedGroups.has(statusName);
       
       groupEl.className = `status-group ${isExpanded ? '' : 'collapsed'}`;
-      
-      // Style status badges depending on group type
-      let badgeClass = 'status-ongoing';
-      const statusLower = statusName.toLowerCase();
-      if (statusLower.includes('hold') || statusLower.includes('02') || statusLower.includes('05')) {
-        badgeClass = 'status-hold';
-      } else if (statusLower.includes('issued') || statusLower.includes('complete') || statusLower.includes('03') || statusLower.includes('06')) {
-        badgeClass = 'status-issued';
-      }
+
+      const tone = statusToneForLabel(statusName);
 
       groupEl.innerHTML = `
-        <div class="status-group-header" style="cursor: pointer;">
-          <div class="status-group-title" style="display: flex; align-items: center;">
-            <svg class="collapse-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 8px; transition: transform var(--transition-normal);"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            <span class="status-group-badge ${badgeClass}">${statusName}</span>
-          </div>
+        <button type="button" class="status-group-header" aria-expanded="${isExpanded}">
+          <span class="status-group-title">
+            <svg class="collapse-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span class="status-group-badge" data-tone="${tone}">
+              <span class="status-group-dot" aria-hidden="true"></span>
+              <span class="status-group-name">${statusName}</span>
+            </span>
+          </span>
           <span class="status-group-count">${tasksInGroup.length} ${tasksInGroup.length === 1 ? 'work' : 'works'}</span>
-        </div>
+        </button>
         <div class="status-group-cards"></div>
       `;
 
@@ -1686,11 +2068,12 @@ function renderDashboard() {
         const currentlyCollapsed = groupEl.classList.contains('collapsed');
         if (currentlyCollapsed) {
           groupEl.classList.remove('collapsed');
-          state.expandedGroups.add(statusName);
+          state.collapsedGroups.delete(statusName);
         } else {
           groupEl.classList.add('collapsed');
-          state.expandedGroups.delete(statusName);
+          state.collapsedGroups.add(statusName);
         }
+        headerEl.setAttribute('aria-expanded', String(!currentlyCollapsed));
       });
 
       const subContainer = groupEl.querySelector('.status-group-cards');
@@ -1818,118 +2201,131 @@ function parseRemarksToEvents(remarks) {
   return events;
 }
 
-// Generate Card Component DOM node
+/**
+ * One work in the list.
+ *
+ * The shape mirrors the read-only viewer's card (docs/works/js/ui/workCard.js) so the two web
+ * apps read as one product — file number and status on top, the work name as the headline, then
+ * location, size, the three approval pills and the remarks. What the dashboard adds is the
+ * footer: the target date, the remarks timeline and the way in to editing.
+ */
 function createTaskCardElement(task) {
   const colKeys = CONFIG.COLUMNS;
-  const fileNum = getRowValue(task, colKeys.FILE_NUMBER) || 'File Details Awaited';
+  const fileNum = getRowValue(task, colKeys.FILE_NUMBER) || 'No file number';
   const name = getRowValue(task, colKeys.WORK_NAME) || 'Untitled Work';
   const status = getRowValue(task, colKeys.STATUS) || 'No Status';
-  const floors = getRowValue(task, colKeys.FLOORS) || '-';
-  const area = getRowValue(task, colKeys.AREA) || '-';
+  const floors = getRowValue(task, colKeys.FLOORS) || '';
+  const area = getRowValue(task, colKeys.AREA) || '';
   const remarks = getRowValue(task, colKeys.REMARKS) || 'No remarks provided.';
   const assignee = getRowValue(task, colKeys.ASE) || 'Unassigned';
   const targetDate = getRowValue(task, colKeys.TARGET_DATE) || '';
   const lac = getRowValue(task, colKeys.LAC) || '';
   const district = getRowValue(task, colKeys.DISTRICT) || '';
+  const asStatus = getRowValue(task, colKeys.AS_STATUS) || '';
+  const arStatus = getRowValue(task, colKeys.AR_STATUS) || '';
+  const srStatus = getRowValue(task, colKeys.SR_STATUS) || '';
 
   const card = document.createElement('article');
   card.className = 'task-card';
-  
-  // Style status badges
-  let badgeClass = 'status-ongoing';
-  const statusLower = status.toLowerCase();
-  if (statusLower.includes('hold') || statusLower.includes('02') || statusLower.includes('05')) {
-    badgeClass = 'status-hold';
-  } else if (statusLower.includes('issued') || statusLower.includes('complete') || statusLower.includes('03') || statusLower.includes('06')) {
-    badgeClass = 'status-issued';
-  }
 
-  // Target Date formatting
-  let dateText = 'No Target';
+  const tone = statusToneForLabel(status);
+
+  // Target Date formatting — free text targets show as written
+  let dateText = 'No target date';
   if (targetDate) {
-    try {
-      const d = new Date(targetDate);
-      if (!isNaN(d.getTime())) {
-        dateText = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      } else {
-        dateText = targetDate;
-      }
-    } catch {
-      dateText = targetDate;
-    }
+    const parts = sheetDateParts(targetDate);
+    dateText = parts
+      ? `Target ${new Date(parts.year, parts.month - 1, parts.day).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        })}`
+      : targetDate;
   }
 
   // Get initials for Avatar
   const initials = assignee.substring(0, 3).toUpperCase();
 
+  const place = [lac, district].filter(Boolean).join(' • ') || 'Location not set';
+  const size = [floors ? `${floors} floors` : '', area ? `${area} m²` : ''].filter(Boolean).join('  •  ');
+
   // Parse remarks into timeline events
   const events = parseRemarksToEvents(remarks);
   const showTimeline = events.length > 1 || (events.length === 1 && events[0].dateStr);
 
+  const miniPill = (label, value) => `
+    <span class="mini-pill">
+      <span class="mini-pill-label">${label}:</span>
+      <span class="mini-pill-value">${escapeHtml(value || '—')}</span>
+    </span>`;
+
   card.innerHTML = `
     <div class="card-main-content">
       <div class="card-header">
-        <span class="file-number" title="${fileNum}">${fileNum.length > 25 ? fileNum.substring(0,25)+'...' : fileNum}</span>
-        <span class="badge-status ${badgeClass}">${status}</span>
+        <span class="file-number" title="${escapeHtml(fileNum)}">${escapeHtml(fileNum)}</span>
+        <span class="badge-status" data-tone="${tone}" title="${escapeHtml(status)}">${escapeHtml(shortStatusLabel(status))}</span>
       </div>
-      
+
       <div class="card-body">
-        <h3 title="${name}">${name}</h3>
-        
+        <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
+
         <div class="card-details">
           <div class="card-detail-item">
-            <span class="lbl">Floors & Area</span>
-            <span class="val">${floors} (${area} m²)</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span class="val" title="${escapeHtml(place)}">${escapeHtml(place)}</span>
           </div>
+          ${size ? `
           <div class="card-detail-item">
-            <span class="lbl">LAC & District</span>
-            <span class="val" title="${lac}, ${district}">${lac || 'General'}</span>
-          </div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 15h4v4"/><path d="M7 11h8v8"/></svg>
+            <span class="val">${escapeHtml(size)}</span>
+          </div>` : ''}
         </div>
-        
-        <div class="card-remarks-wrapper">
-          <p class="card-remarks" title="${remarks}">${remarks}</p>
-          ${showTimeline ? `
-            <button class="timeline-toggle-btn" data-row="${task._rowNum}">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-              <span class="btn-text">Timeline Log (${events.length})</span>
-            </button>
-          ` : ''}
+
+        <div class="mini-pill-row">
+          ${miniPill('AS', asStatus)}${miniPill('AR', arStatus)}${miniPill('SR', srStatus)}
         </div>
+
+        <p class="card-remarks" title="${escapeHtml(remarks)}">${escapeHtml(remarks)}</p>
       </div>
-      
+
       <div class="card-footer">
         <div class="card-assignee">
-          <div class="avatar" style="box-shadow: 0 0 8px hsla(142, 70%, 50%, 0.2); background: linear-gradient(135deg, hsl(142, 70%, 45%), hsl(142, 60%, 50%))">${initials}</div>
-          <span>Target: ${dateText}</span>
+          <span class="avatar" title="${escapeHtml(assignee)}">${escapeHtml(initials)}</span>
+          <span title="${escapeHtml(dateText)}">${escapeHtml(dateText)}</span>
         </div>
-        <button class="quick-update-btn" data-row="${task._rowNum}">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="14 2 18 6 7 17 3 17 3 13 14 2"></polygon><line x1="3" y1="22" x2="21" y2="22"></line></svg>
-          Edit Details
-        </button>
+        <div class="card-actions">
+          ${showTimeline ? `
+            <button type="button" class="timeline-toggle-btn" data-row="${task._rowNum}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span class="btn-text">Timeline (${events.length})</span>
+            </button>
+          ` : ''}
+          <button type="button" class="quick-update-btn" data-row="${task._rowNum}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polygon points="14 2 18 6 7 17 3 17 3 13 14 2"></polygon><line x1="3" y1="22" x2="21" y2="22"></line></svg>
+            Edit
+          </button>
+        </div>
       </div>
     </div>
-    
+
     ${showTimeline ? `
       <div class="card-timeline-container collapsed" id="timeline-${task._rowNum}">
         <h4 class="timeline-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color: var(--color-accent); vertical-align: middle;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-          Project Event History Log
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          Event history
         </h4>
         <div class="timeline-list">
           ${events.map(ev => {
             const hasDate = !!ev.dateStr;
-            const dateBadge = hasDate ? `<span class="timeline-date-badge">${ev.dateStr}</span>` : '';
+            const dateBadge = hasDate ? `<span class="timeline-date-badge">${escapeHtml(ev.dateStr)}</span>` : '';
             const itemClass = hasDate ? 'timeline-item has-date' : 'timeline-item no-date';
             return `
               <div class="${itemClass}">
                 <div class="timeline-dot"></div>
-                <div class="timeline-meta">
-                  ${dateBadge}
-                </div>
+                <div class="timeline-meta">${dateBadge}</div>
                 <div class="timeline-content">
-                  <span class="timeline-desc-text">${ev.description}</span>
-                  ${hasDate ? `<div class="timeline-original-text">"${ev.originalText}"</div>` : ''}
+                  <span class="timeline-desc-text">${escapeHtml(ev.description)}</span>
+                  ${hasDate ? `<div class="timeline-original-text">"${escapeHtml(ev.originalText)}"</div>` : ''}
                 </div>
               </div>
             `;
@@ -1968,12 +2364,12 @@ function createTaskCardElement(task) {
         timelineContainer.classList.remove('collapsed');
         timelineContainer.classList.add('expanded');
         toggleBtn.classList.add('active');
-        toggleBtn.querySelector('.btn-text').textContent = 'Hide Timeline';
+        toggleBtn.querySelector('.btn-text').textContent = 'Hide';
       } else {
         timelineContainer.classList.remove('expanded');
         timelineContainer.classList.add('collapsed');
         toggleBtn.classList.remove('active');
-        toggleBtn.querySelector('.btn-text').textContent = `Timeline Log (${events.length})`;
+        toggleBtn.querySelector('.btn-text').textContent = `Timeline (${events.length})`;
       }
     });
 
@@ -2263,6 +2659,36 @@ async function handleAddTaskSubmit(e) {
   }
 }
 
+// Apps Script now and then answers a valid write with a Google HTML error page (transient 404,
+// quota or timeout) instead of JSON. An update writes fixed values to a fixed row, so sending it
+// again is harmless; only after every attempt fails is the edit rolled back.
+async function postUpdateWithRetry(scriptUrl, payload) {
+  const delays = [2000, 5000];
+  let lastError;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      const response = await fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+      });
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        const unconfirmed = new Error('Google returned an error page instead of a result (HTTP ' + response.status + ')');
+        unconfirmed.outcomeUnknown = true;
+        throw unconfirmed;
+      }
+    } catch (err) {
+      lastError = err;
+      if (attempt < delays.length) await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+    }
+  }
+  throw lastError;
+}
+
 // Handle Edit Task Form Submission (Optimistic UI Update!)
 async function handleEditTaskSubmit(e) {
   e.preventDefault();
@@ -2306,14 +2732,7 @@ async function handleEditTaskSubmit(e) {
 
   // 2. FULFILL WRITE OPERATION IN BACKGROUND
   try {
-    const response = await fetch(currentScriptUrl, {
-      method: 'POST',
-      mode: 'cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(updatePayload)
-    });
-    
-    const result = await response.json();
+    const result = await postUpdateWithRetry(currentScriptUrl, updatePayload);
     if (result.success) {
       showToast(`Google Sheets successfully updated!`, 'success');
     } else {
@@ -2321,6 +2740,15 @@ async function handleEditTaskSubmit(e) {
     }
   } catch (err) {
     console.error(err);
+
+    // Google can save the edit and still answer with an error page. With no JSON to say either way,
+    // rolling back would hide a change that is really in the sheet — re-read the sheet instead.
+    if (err.outcomeUnknown) {
+      showToast('Could not confirm the save (' + err.message + '). Re-checking the sheet…', 'warning');
+      loadData();
+      return;
+    }
+
     showToast(`Failed to update Google Sheet: ${err.message}. Rolling back.`, 'error');
     
     // 3. API FAILURE ROLLBACK: Restore original values and re-render dashboard
@@ -2374,11 +2802,15 @@ function switchView(viewName) {
   // Hide filters and dashboard search container inside Calendar or Analytics views
   const dbSearchContainer = document.getElementById('dashboard-search-container');
   const filtersBar = document.getElementById('filters-bar');
+  const filterResultChip = document.getElementById('filter-result-chip');
   if (dbSearchContainer) {
     dbSearchContainer.style.display = viewName === 'LIST' ? 'flex' : 'none';
   }
   if (filtersBar) {
     filtersBar.style.display = viewName === 'LIST' ? 'flex' : 'none';
+  }
+  if (filterResultChip) {
+    filterResultChip.style.display = viewName === 'LIST' && hasAnyActiveFilter() ? 'flex' : 'none';
   }
   
   if (viewName === 'LIST') {
@@ -2454,22 +2886,17 @@ function renderAnalytics() {
     const heightPercentage = Math.round((count / maxCount) * 100);
     const label = prefix;
     const fullText = CONFIG.STATUS_OPTIONS.find(o => o.startsWith(prefix)) || prefix;
-    
-    // Custom gradient styling per status category
-    let styleBar = 'background: var(--gradient-accent); box-shadow: 0 0 10px -2px var(--color-accent-glow);';
-    if (prefix === '02' || prefix === '05') {
-      styleBar = 'background: linear-gradient(135deg, hsl(38, 92%, 45%), hsl(38, 92%, 55%)); box-shadow: 0 0 10px -2px hsla(38, 92%, 50%, 0.3);';
-    } else if (prefix === '03' || prefix === '06') {
-      styleBar = 'background: linear-gradient(135deg, hsl(142, 70%, 45%), hsl(142, 70%, 55%)); box-shadow: 0 0 10px -2px hsla(142, 70%, 50%, 0.3);';
-    } else if (prefix === '08' || prefix === '09') {
-      styleBar = 'background: linear-gradient(135deg, hsl(350, 89%, 55%), hsl(350, 89%, 65%)); box-shadow: 0 0 10px -2px hsla(350, 89%, 60%, 0.3);';
-    }
-    
+
+    // The bar sits in a track of its own so its percentage height has a definite box to measure
+    // against, and the count rides at `bottom: <same %>` so it floats just above the bar's top.
+    // Its colour is the status tone, so the chart reads the same as the badges beside it.
     return `
       <div class="bar-chart-bar-wrapper">
-        <span class="bar-chart-value">${count}</span>
-        <div class="bar-chart-bar" style="height: ${heightPercentage}%; max-height: 100%; ${styleBar}" title="${fullText}: ${count} works"></div>
-        <span class="bar-chart-label" title="${fullText}">${label}</span>
+        <div class="bar-chart-bar-track">
+          <div class="bar-chart-bar" data-tone="${statusTone(prefix)}" style="height: ${heightPercentage}%" title="${escapeHtml(fullText)}: ${count} works"></div>
+          <span class="bar-chart-value" style="bottom: ${heightPercentage}%">${count}</span>
+        </div>
+        <span class="bar-chart-label" title="${escapeHtml(fullText)}">${label}</span>
       </div>
     `;
   }).join('');
@@ -2514,31 +2941,16 @@ function renderCalendar() {
     
     // Match and append active projects with a target date inside this day
     const dayTasks = state.tasks.filter(task => {
-      const targetDateStr = getRowValue(task, colKeys.TARGET_DATE);
-      if (!targetDateStr) return false;
-      
-      try {
-        const d = new Date(targetDateStr);
-        return d.getDate() === day && d.getMonth() === month && d.getFullYear() === year;
-      } catch {
-        return false;
-      }
+      const parts = sheetDateParts(getRowValue(task, colKeys.TARGET_DATE));
+      if (!parts) return false;
+      return parts.day === day && parts.month === month + 1 && parts.year === year;
     });
     
     dayTasks.forEach(task => {
       const eventTag = document.createElement('div');
       eventTag.className = 'calendar-event';
-      const status = getRowValue(task, colKeys.STATUS).toString().toLowerCase();
-      
-      // Dynamic HSL colors inside calendar cell items
-      let styleColor = 'background: hsla(200, 95%, 55%, 0.15); color: hsl(200, 95%, 55%); border-left: 2px solid hsl(200, 95%, 55%)';
-      if (status.includes('hold') || status.includes('02') || status.includes('05')) {
-        styleColor = 'background: hsla(38, 92%, 50%, 0.15); color: hsl(38, 92%, 50%); border-left: 2px solid hsl(38, 92%, 50%)';
-      } else if (status.includes('issued') || status.includes('complete') || status.includes('03') || status.includes('06')) {
-        styleColor = 'background: hsla(142, 70%, 50%, 0.15); color: hsl(142, 70%, 50%); border-left: 2px solid hsl(142, 70%, 50%)';
-      }
-      
-      eventTag.style = styleColor;
+      // The status tone, so a deadline in the calendar carries the same colour as its badge.
+      eventTag.dataset.tone = statusToneForLabel(getRowValue(task, colKeys.STATUS));
       eventTag.textContent = getRowValue(task, colKeys.WORK_NAME) || 'Untitled Work';
       eventTag.title = `${getRowValue(task, colKeys.WORK_NAME)} (Status: ${getRowValue(task, colKeys.STATUS)})`;
       
