@@ -686,6 +686,7 @@ const dom = {
 function init() {
   setupUIThemeAndDropdowns();
   setupEventListeners();
+  wireEditHistory();
   // Every work is in scope until a chip is clicked
   syncStatusChipHighlight();
   loadData();
@@ -1281,7 +1282,13 @@ async function loadData() {
       state.tasks = normalizeLoadedTasks(filtered);
       populateDynamicFilters();
       renderDashboard();
-      showToast(`Connected! Loaded ${state.tasks.length} works for ${activeProfile.id}`, 'success');
+      // web-boot.js reports when the rows came from the saved copy rather than the live sheet.
+      const dataState = typeof window.wuDataState === 'function' ? window.wuDataState() : { live: true };
+      if (dataState.live) {
+        showToast(`Connected! Loaded ${state.tasks.length} works for ${activeProfile.id}`, 'success');
+      } else {
+        showToast(`NOT LIVE DATA — showing ${state.tasks.length} works from a saved copy for ${activeProfile.id}. Waiting for the sheet…`, 'error');
+      }
     } else {
       const errMsg = data.error || 'Server error';
       if (errMsg.includes('getSheetByName') || errMsg.includes('getSheets') || errMsg.includes('Cannot access spreadsheet') || errMsg.includes('SPREADSHEET_ID')) {
@@ -2603,10 +2610,17 @@ async function handleAddTaskSubmit(e) {
   const currentScriptUrl = activeProfile.scriptUrl || CONFIG.SCRIPT_URL;
   const newRowData = buildTaskDataPayload(formValues, null);
 
+  const historyId = recordEdit({
+    action: 'add',
+    workName: formValues.workName,
+    changes: describeNewWork(formValues)
+  });
+
   closeModal(dom.addModal);
   showToast('Sending new project file to Google Sheets...', 'info');
 
   if (state.isSimulationMode) {
+    setEditOutcome(historyId, 'simulated');
     setTimeout(() => {
       const mockRow = { ...newRowData };
       mockRow._rowNum = state.tasks.length > 0 ? Math.max(...state.tasks.map(t => t._rowNum || 0)) + 1 : 2;
@@ -2638,6 +2652,10 @@ async function handleAddTaskSubmit(e) {
     try {
       result = JSON.parse(responseText);
     } catch {
+      if (!responseText.includes('protected cell')) {
+        // No JSON back, so there is no telling whether the row was added — never re-send an append.
+        setEditOutcome(historyId, 'unconfirmed', 'Google returned an error page instead of a result. Check the sheet before adding it again.');
+      }
       if (responseText.includes('protected cell')) {
         throw new Error(
           'Cannot write to the sheet — the target row is protected. Ask the spreadsheet owner to allow edits on the WORKFLOW MONITORING SHEET table for your account.'
@@ -2647,6 +2665,7 @@ async function handleAddTaskSubmit(e) {
     }
 
     if (result.success) {
+      setEditOutcome(historyId, 'saved');
       showToast('New project file appended to Google Sheets!', 'success');
       logActivity(`Appended project file: "${formValues.workName}" to Google Sheets`, 'success');
       loadData();
@@ -2655,8 +2674,181 @@ async function handleAddTaskSubmit(e) {
     }
   } catch (err) {
     console.error(err);
+    const entry = readEditHistory().find(item => item.id === historyId);
+    if (!entry || entry.status === 'pending') setEditOutcome(historyId, 'failed', err.message);
     showToast(`Append failed: ${err.message}`, 'error');
   }
+}
+
+// === EDIT HISTORY ===
+// A persistent, per-device log of every edit sent to the sheet: what changed (old -> new), when,
+// and whether Google confirmed it. Lives in localStorage so it survives a reload — which matters
+// most when a save could not be confirmed.
+const EDIT_HISTORY_KEY = 'wu.editHistory.v1';
+const EDIT_HISTORY_LIMIT = 300;
+
+const EDIT_HISTORY_FIELDS = [
+  { key: 'workName', label: 'Name of Work', cols: 'WORK_NAME' },
+  { key: 'fileNumber', label: 'e-Office File Number', cols: 'FILE_NUMBER' },
+  { key: 'status', label: 'Design Status', cols: 'STATUS' },
+  { key: 'district', label: 'District', cols: 'DISTRICT' },
+  { key: 'lac', label: 'LAC', cols: 'LAC' },
+  { key: 'asStatus', label: 'AS Status', cols: 'AS_STATUS' },
+  { key: 'arStatus', label: 'AR Status', cols: 'AR_STATUS' },
+  { key: 'srStatus', label: 'SR Status', cols: 'SR_STATUS' },
+  { key: 'designOffice', label: 'Design Office', cols: 'DESIGN_OFFICE' },
+  { key: 'floors', label: 'No. of Floors', cols: 'FLOORS' },
+  { key: 'area', label: 'Total area (m²)', cols: 'AREA' },
+  { key: 'ase', label: 'ASE', cols: 'ASE' },
+  { key: 'se', label: 'SE', cols: 'SE' },
+  { key: 'remarks', label: 'Remarks', cols: 'REMARKS' },
+  { key: 'targetDate', label: 'Target Date', cols: 'TARGET_DATE', date: true },
+  { key: 'tentativeDate', label: 'Tentative Issued Date', cols: 'TENTATIVE_ISSUED_DATE', date: true },
+  { key: 'detailedLastDate', label: 'Detailed Design Last Issued', cols: 'DETAILED_LAST_ISSUED_DATE', date: true },
+  { key: 'detailedCompleteDate', label: 'Detailed Design Complete Issued', cols: 'DETAILED_COMPLETE_ISSUED_DATE', date: true }
+];
+
+function readEditHistory() {
+  try {
+    const raw = window.localStorage.getItem(EDIT_HISTORY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeEditHistory(list) {
+  try {
+    window.localStorage.setItem(EDIT_HISTORY_KEY, JSON.stringify(list.slice(0, EDIT_HISTORY_LIMIT)));
+  } catch {
+    /* storage blocked or full — the history is a convenience, never block an edit on it */
+  }
+}
+
+function recordEdit(entry) {
+  const record = {
+    id: `e${Date.now()}${Math.floor(Math.random() * 1000)}`,
+    ts: Date.now(),
+    profile: getActiveProfile().id,
+    status: 'pending',
+    error: '',
+    ...entry
+  };
+  writeEditHistory([record, ...readEditHistory()]);
+  return record.id;
+}
+
+function setEditOutcome(id, status, error = '') {
+  if (!id) return;
+  const list = readEditHistory();
+  const record = list.find(item => item.id === id);
+  if (!record) return;
+  record.status = status;
+  record.error = error;
+  writeEditHistory(list);
+}
+
+// Field-level differences between the row as it was and the values the form is about to send.
+function computeEditChanges(originalRow, formValues) {
+  const changes = [];
+  for (const field of EDIT_HISTORY_FIELDS) {
+    if (formValues[field.key] === undefined) continue;
+    let before = getRowValue(originalRow, CONFIG.COLUMNS[field.cols]);
+    if (field.date) before = parseSheetDateToInput(before);
+    before = before === undefined || before === null ? '' : String(before).trim();
+    const after = String(formValues[field.key] ?? '').trim();
+    if (before !== after) changes.push({ field: field.label, from: before, to: after });
+  }
+  return changes;
+}
+
+// For a new work there is no "before" — list what was filled in.
+function describeNewWork(formValues) {
+  return EDIT_HISTORY_FIELDS
+    .filter(field => String(formValues[field.key] ?? '').trim() !== '')
+    .map(field => ({ field: field.label, from: '', to: String(formValues[field.key]).trim() }));
+}
+
+const EDIT_STATUS_LABELS = {
+  pending: 'Saving…',
+  saved: 'Saved to sheet',
+  failed: 'Failed — not saved',
+  unconfirmed: 'Not confirmed — check sheet',
+  simulated: 'Demo only'
+};
+
+function formatEditTime(ts) {
+  return new Date(ts).toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
+  });
+}
+
+function renderEditHistory() {
+  const body = document.getElementById('history-body');
+  if (!body) return;
+  const list = readEditHistory();
+  if (list.length === 0) {
+    body.innerHTML = `
+      <div class="log-empty-state" style="display:flex">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        <p>No edits recorded on this device yet.</p>
+      </div>`;
+    return;
+  }
+
+  const showValue = value => (value === '' ? '<em>(empty)</em>' : escapeHtml(value));
+  body.innerHTML = `<div class="history-list">${list.map(item => {
+    const status = EDIT_STATUS_LABELS[item.status] ? item.status : 'pending';
+    const changes = Array.isArray(item.changes) ? item.changes : [];
+    const verb = item.action === 'add' ? 'New work added' : 'Edited';
+    const changeRows = changes.length === 0
+      ? '<li>No field values changed.</li>'
+      : changes.map(change => item.action === 'add'
+          ? `<li><span class="history-field">${escapeHtml(change.field)}:</span> <span class="history-to">${showValue(change.to)}</span></li>`
+          : `<li><span class="history-field">${escapeHtml(change.field)}:</span> <span class="history-from">${showValue(change.from)}</span> → <span class="history-to">${showValue(change.to)}</span></li>`
+        ).join('');
+    return `
+      <div class="history-entry history-${status}">
+        <div class="history-top">
+          <span class="history-time">${escapeHtml(formatEditTime(item.ts))}</span>
+          <span class="history-badge">${escapeHtml(EDIT_STATUS_LABELS[status])}</span>
+        </div>
+        <div class="history-title">${escapeHtml(item.workName || 'Untitled work')}</div>
+        <div class="history-meta">${verb} by ${escapeHtml(item.profile || '—')}${item.rowNum ? ` · sheet row ${escapeHtml(String(item.rowNum))}` : ''}</div>
+        <ul class="history-changes">${changeRows}</ul>
+        ${item.error ? `<div class="history-error">${escapeHtml(item.error)}</div>` : ''}
+      </div>`;
+  }).join('')}</div>`;
+}
+
+function openEditHistory() {
+  renderEditHistory();
+  document.getElementById('history-overlay').classList.add('active');
+}
+
+function closeEditHistory() {
+  document.getElementById('history-overlay').classList.remove('active');
+}
+
+function wireEditHistory() {
+  const overlay = document.getElementById('history-overlay');
+  const openBtn = document.getElementById('edit-history-btn');
+  if (!overlay || !openBtn) return;
+  openBtn.addEventListener('click', openEditHistory);
+  document.getElementById('close-history-btn').addEventListener('click', closeEditHistory);
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) closeEditHistory();
+  });
+  document.getElementById('clear-history-btn').addEventListener('click', () => {
+    if (readEditHistory().length === 0) return;
+    if (!window.confirm('Clear the edit history stored on this device? The sheet itself is not affected.')) return;
+    writeEditHistory([]);
+    renderEditHistory();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && overlay.classList.contains('active')) closeEditHistory();
+  });
 }
 
 // Apps Script now and then answers a valid write with a Google HTML error page (transient 404,
@@ -2704,6 +2896,12 @@ async function handleEditTaskSubmit(e) {
   }
 
   const originalTaskBackup = { ...state.tasks[taskIndex] };
+  const historyId = recordEdit({
+    action: 'update',
+    workName: getRowValue(originalTaskBackup, colKeys.WORK_NAME),
+    rowNum,
+    changes: computeEditChanges(originalTaskBackup, formValues)
+  });
 
   applyFormValuesToTask(state.tasks[taskIndex], formValues);
   populateDynamicFilters();
@@ -2721,6 +2919,7 @@ async function handleEditTaskSubmit(e) {
   });
 
   if (state.isSimulationMode) {
+    setEditOutcome(historyId, 'simulated');
     setTimeout(() => {
       showToast('Mock project updated successfully!', 'success');
     }, 400);
@@ -2734,6 +2933,7 @@ async function handleEditTaskSubmit(e) {
   try {
     const result = await postUpdateWithRetry(currentScriptUrl, updatePayload);
     if (result.success) {
+      setEditOutcome(historyId, 'saved');
       showToast(`Google Sheets successfully updated!`, 'success');
     } else {
       throw new Error(result.error || 'Server write failed');
@@ -2744,11 +2944,13 @@ async function handleEditTaskSubmit(e) {
     // Google can save the edit and still answer with an error page. With no JSON to say either way,
     // rolling back would hide a change that is really in the sheet — re-read the sheet instead.
     if (err.outcomeUnknown) {
+      setEditOutcome(historyId, 'unconfirmed', err.message);
       showToast('Could not confirm the save (' + err.message + '). Re-checking the sheet…', 'warning');
       loadData();
       return;
     }
 
+    setEditOutcome(historyId, 'failed', err.message);
     showToast(`Failed to update Google Sheet: ${err.message}. Rolling back.`, 'error');
     
     // 3. API FAILURE ROLLBACK: Restore original values and re-render dashboard

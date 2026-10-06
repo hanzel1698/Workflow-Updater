@@ -166,6 +166,11 @@
   var forceLive = false;
   var liveInflight = null;
 
+  // app.js asks this when a sheet load finishes, to word its toast honestly.
+  window.wuDataState = function () {
+    return { live: !(sheetCache.fromCache || sheetCache.refreshing) };
+  };
+
   function requireLiveNextRead() {
     forceLive = true;
   }
