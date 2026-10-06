@@ -199,6 +199,65 @@ function getLastPopulatedRowNum(data, headerRowIndex, headers) {
   return lastIdx + 1; // convert to 1-based row number
 }
 
+// ---- Response cache -------------------------------------------------------------------------
+// Web-app cold starts and full-sheet reads dominate GET latency, so the serialized response is
+// cached for a short time. Every write clears it, so the app always sees its own edits at once.
+// Edits typed directly into the sheet show up within DATA_CACHE_SECONDS (or pass &nocache=1).
+var DATA_CACHE_SECONDS = 60;
+var DROPDOWN_CACHE_SECONDS = 600;
+var CACHE_CHUNK_SIZE = 90000; // CacheService caps a single value at 100KB
+
+function cacheKeyFor(kind, ss, e) {
+  var tab = (e && e.parameter && e.parameter.sheet) || (e && e.sheet) || "";
+  return "wf:" + kind + ":" + ss.getId() + ":" + tab;
+}
+
+function cacheGet(key) {
+  var cache = CacheService.getScriptCache();
+  var count = parseInt(cache.get(key + ":n"), 10);
+  if (!count) return null;
+  var keys = [];
+  for (var i = 0; i < count; i++) keys.push(key + ":" + i);
+  var parts = cache.getAll(keys);
+  var out = "";
+  for (var j = 0; j < count; j++) {
+    var part = parts[key + ":" + j];
+    if (part === undefined || part === null) return null; // a chunk expired — treat as a miss
+    out += part;
+  }
+  return out;
+}
+
+function cachePut(key, text, seconds) {
+  var cache = CacheService.getScriptCache();
+  var count = Math.ceil(text.length / CACHE_CHUNK_SIZE);
+  var entries = {};
+  for (var i = 0; i < count; i++) {
+    entries[key + ":" + i] = text.substr(i * CACHE_CHUNK_SIZE, CACHE_CHUNK_SIZE);
+  }
+  entries[key + ":n"] = String(count);
+  cache.putAll(entries, seconds);
+}
+
+// Clears cached sheet data after a write (dropdown lists come from a different tab, so they stay)
+function invalidateDataCache(ss, source) {
+  var key = cacheKeyFor("data", ss, source);
+  var cache = CacheService.getScriptCache();
+  var count = parseInt(cache.get(key + ":n"), 10) || 0;
+  var keys = [key + ":n"];
+  for (var i = 0; i < count; i++) keys.push(key + ":" + i);
+  cache.removeAll(keys);
+}
+
+function getCachedDropdownOptions(ss, e) {
+  var key = cacheKeyFor("dd", ss, null);
+  var hit = cacheGet(key);
+  if (hit) return JSON.parse(hit);
+  var fresh = getDropdownOptions(ss);
+  try { cachePut(key, JSON.stringify(fresh), DROPDOWN_CACHE_SECONDS); } catch (err) {}
+  return fresh;
+}
+
 /**
  * Handle GET requests: Fetch all rows from the target sheet (or debug sheets info)
  */
@@ -237,6 +296,15 @@ function doGet(e) {
       return makeJsonResponse({ success: true, debug: true, sheets: debugInfo });
     }
     
+    var noCache = e && e.parameter && e.parameter.nocache === "1";
+    var dataKey = cacheKeyFor("data", ss, e);
+    if (!noCache) {
+      var cached = cacheGet(dataKey);
+      if (cached) {
+        return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     var sheet = getTargetSheet(ss, e);
     var data = sheet.getDataRange().getValues();
     
@@ -265,12 +333,14 @@ function doGet(e) {
       rows.push(row);
     }
     
-    return makeJsonResponse({
+    var json = JSON.stringify({
       success: true,
       headers: headers,
       rows: rows,
-      dropdowns: getDropdownOptions(ss)
+      dropdowns: getCachedDropdownOptions(ss, e)
     });
+    try { cachePut(dataKey, json, DATA_CACHE_SECONDS); } catch (err) {} // too big / quota — skip caching
+    return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
     
   } catch (error) {
     return makeJsonResponse({ success: false, error: error.toString() }, 500);
@@ -320,6 +390,7 @@ function doPost(e) {
       // Write only the submitted columns individually — avoids overwriting
       // protected columns (e.g. I/C (ASE), I/C (SE)) or unrelated table fields.
       var cellsWritten = writeDataToRow(sheet, headers, targetRow, payload.data, true);
+      invalidateDataCache(ss, payload);
 
       if (cellsWritten === 0) {
         return makeJsonResponse({ success: false, error: "No field values provided to append" }, 400);
@@ -357,6 +428,7 @@ function doPost(e) {
       
       // Update only the submitted columns individually
       writeDataToRow(sheet, headers, rowNum, payload.data, false);
+      invalidateDataCache(ss, payload);
       
       return makeJsonResponse({ success: true, message: "Row successfully updated at row " + rowNum });
     }
