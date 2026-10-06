@@ -159,6 +159,50 @@
     }
   }
 
+  // Stale-while-revalidate: Apps Script needs 15-80s to hand back the sheet, so a returning visitor
+  // gets the saved copy at once and the live copy is fetched behind it. When the live copy differs,
+  // the dashboard reloads once from the freshly saved data.
+  var FRESH_WINDOW_MS = 30 * 1000;
+  var forceLive = false;
+  var liveInflight = null;
+
+  function requireLiveNextRead() {
+    forceLive = true;
+  }
+
+  function fetchLiveSheet(nativeFetch, input, init, baseUrl) {
+    if (liveInflight) return liveInflight;
+    liveInflight = fetchSheetWithRetry(nativeFetch, input, init)
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response
+          .clone()
+          .json()
+          .then(function (data) {
+            if (!data || !data.success) throw new Error('Sheet read failed');
+            return { response: response, data: data };
+          });
+      })
+      .then(
+        function (result) {
+          liveInflight = null;
+          return result;
+        },
+        function (err) {
+          liveInflight = null;
+          throw err;
+        }
+      );
+    return liveInflight;
+  }
+
+  function cachedResponse(entry) {
+    return new Response(JSON.stringify(entry.payload), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
   function installFetchCache() {
     if (typeof window.fetch !== 'function') return;
     var nativeFetch = window.fetch.bind(window);
@@ -167,38 +211,63 @@
       var url = typeof input === 'string' ? input : (input && input.url) || '';
       var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
 
-      if (method !== 'GET' || !isSheetReadUrl(url)) return nativeFetch(input, init);
+      if (!isSheetReadUrl(url)) return nativeFetch(input, init);
+
+      if (method !== 'GET') {
+        // A write makes the saved copy stale — the next read must wait for the sheet.
+        return nativeFetch(input, init).then(function (response) {
+          forceLive = true;
+          return response;
+        });
+      }
 
       var baseUrl = url.split('?')[0];
+      var entry = readSheetPayload(baseUrl);
+      var wantLive = forceLive || !entry;
+      forceLive = false;
 
-      // Apps Script is slow (15-80s on a 1 MB sheet) and now and then answers a perfectly valid
-      // request with a transient Google 404 or a dropped connection. Retry before falling back to
-      // the saved copy, so a hiccup does not strand the app on stale data.
-      return fetchSheetWithRetry(nativeFetch, input, init).then(
-        function (response) {
-          if (!response.ok) return replayCache(baseUrl, new Error('HTTP ' + response.status), response);
-          // A live answer clears any "showing saved data" state from an earlier sync.
+      if (entry && !wantLive) {
+        var age = Date.now() - (entry.savedAt || 0);
+        sheetCache.fromCache = false;
+        sheetCache.savedAt = entry.savedAt || 0;
+        updateStatusPill();
+        if (age > FRESH_WINDOW_MS) refreshInBackground(nativeFetch, input, init, baseUrl, entry);
+        return Promise.resolve(cachedResponse(entry));
+      }
+
+      // Nothing saved yet (or a read that must be live): wait for the sheet.
+      return fetchLiveSheet(nativeFetch, input, init, baseUrl).then(
+        function (result) {
           sheetCache.fromCache = false;
+          sheetCache.savedAt = Date.now();
+          saveSheetPayload(baseUrl, result.data);
           updateStatusPill();
-          return response
-            .clone()
-            .json()
-            .then(function (data) {
-              if (data && data.success) {
-                sheetCache.savedAt = Date.now();
-                saveSheetPayload(baseUrl, data);
-              }
-              return response;
-            })
-            .catch(function () {
-              return response;
-            });
+          return result.response;
         },
         function (err) {
           return replayCache(baseUrl, err, null);
         }
       );
     };
+  }
+
+  function refreshInBackground(nativeFetch, input, init, baseUrl, previous) {
+    setPill('Refreshing from sheet…', 'syncing');
+    fetchLiveSheet(nativeFetch, input, init, baseUrl).then(
+      function (result) {
+        var changed = JSON.stringify(result.data) !== JSON.stringify(previous.payload);
+        sheetCache.fromCache = false;
+        sheetCache.savedAt = Date.now();
+        saveSheetPayload(baseUrl, result.data);
+        updateStatusPill();
+        if (changed && typeof window.loadData === 'function') window.loadData();
+      },
+      function () {
+        sheetCache.fromCache = true;
+        sheetCache.savedAt = previous.savedAt || 0;
+        updateStatusPill();
+      }
+    );
   }
 
   var SHEET_RETRY_DELAYS = [1500, 4000, 8000];
@@ -521,10 +590,16 @@
     setPill('');
   }
 
+  function wireSyncButton() {
+    var button = document.getElementById('sync-data-btn');
+    if (button) button.addEventListener('click', requireLiveNextRead, true);
+  }
+
   function wireNetworkEvents() {
     window.addEventListener('offline', updateStatusPill);
     window.addEventListener('online', function () {
       updateStatusPill();
+      requireLiveNextRead();
       if (typeof window.loadData === 'function') {
         if (typeof window.showToast === 'function') window.showToast('Back online — re-syncing sheet…', 'info');
         window.loadData();
@@ -627,6 +702,7 @@
     injectControls();
     buildSettingsModal();
     wireNetworkEvents();
+    wireSyncButton();
     wireInstallPrompt();
     registerServiceWorker();
     warnAboutFileProtocol();

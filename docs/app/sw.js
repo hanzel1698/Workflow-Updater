@@ -7,7 +7,7 @@
  * hit the network.
  */
 
-const BUILD = 'fb4864e986';
+const BUILD = '59b4865934';
 const SHELL_CACHE = `wu-shell-${BUILD}`;
 const FONT_CACHE = `wu-fonts-${BUILD}`;
 const KEEP = [SHELL_CACHE, FONT_CACHE];
