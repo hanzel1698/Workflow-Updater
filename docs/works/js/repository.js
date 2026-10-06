@@ -17,8 +17,13 @@ import {
 import { createWorkItem, rowValue } from './model.js';
 import { WorksLocalCache } from './cache.js';
 
-const FETCH_TIMEOUT_MS = 20000;
-const RETRY_DELAY_MS = 1200;
+// Apps Script needs 15-80 s to hand back a 1 MB sheet, so a short timeout aborts reads that
+// would have succeeded.
+const FETCH_TIMEOUT_MS = 90000;
+// Waits before each retry of a transient failure (network drop, Google's HTML error page).
+const RETRY_DELAYS_MS = [1500, 4000, 8000];
+// A copy synced this recently is shown as-is instead of waiting on the sheet again.
+const FRESH_WINDOW_MS = 30 * 1000;
 
 function buildUrl(scriptUrl) {
   const separator = scriptUrl.includes('?') ? '&' : '?';
@@ -73,8 +78,14 @@ export function filterRowsForProfile(rows, profile) {
  * Outcome of a load attempt: the resolved list of works plus whether we had to fall back to
  * cached or offline sample data because the live sheet couldn't be reached.
  */
-export function createRepository({ remote = fetchSheet, localCache = WorksLocalCache } = {}) {
+export function createRepository({
+  remote = fetchSheet,
+  localCache = WorksLocalCache,
+  retryDelays = RETRY_DELAYS_MS,
+  freshWindowMs = FRESH_WINDOW_MS,
+} = {}) {
   let lastGoodRows = null;
+  let inflight = null;
   let lastSyncedAtMillis = null;
   let diskWarmed = false;
 
@@ -107,21 +118,35 @@ export function createRepository({ remote = fetchSheet, localCache = WorksLocalC
       };
     },
 
-    /** Fetches the live sheet, persisting success; falls back to cache then sample on failure. */
-    async loadWorks(profile) {
+    /**
+     * Fetches the live sheet, persisting success; falls back to cache then sample on failure.
+     * A copy synced within the last 30 s is reused unless `force` is set (manual refresh), and
+     * overlapping loads share one request, since each one costs Apps Script up to a minute.
+     */
+    async loadWorks(profile, { force = false } = {}) {
       const scriptUrl = (profile.scriptUrl || '').trim() || SCRIPT_URL;
 
-      // Apps Script can be slow to wake, and mobile networks drop requests. One retry turns
-      // most transient failures into a normal load instead of a fallback.
+      const saved = force ? null : memoryOrDiskRows();
+      if (saved && lastSyncedAtMillis && Date.now() - lastSyncedAtMillis < freshWindowMs) {
+        return {
+          works: filterRowsForProfile(saved, profile),
+          isOffline: false,
+          errorMessage: null,
+          lastSyncedAtMillis,
+        };
+      }
+
       let response = null;
       let failure = null;
-      for (let attempt = 0; attempt < 2 && !response; attempt += 1) {
-        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-        try {
-          response = await remote(scriptUrl);
-        } catch (error) {
-          failure = error;
+      try {
+        if (!inflight) {
+          inflight = fetchWithRetry(remote, scriptUrl, retryDelays).finally(() => {
+            inflight = null;
+          });
         }
+        response = await inflight;
+      } catch (error) {
+        failure = error;
       }
 
       if (response) {
@@ -156,6 +181,25 @@ export function createRepository({ remote = fetchSheet, localCache = WorksLocalC
       };
     },
   };
+}
+
+/**
+ * Apps Script is slow and now and then answers a valid request with a transient Google error
+ * page or a dropped connection. Retry those with a growing delay before giving up on the live
+ * sheet; a timeout is not retried, as it has already cost the full wait.
+ */
+async function fetchWithRetry(remote, scriptUrl, delays) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await remote(scriptUrl);
+    } catch (error) {
+      const retryable = error && error.name !== 'AbortError' && !/^HTTP 40[13]/.test(error.message || '');
+      if (!retryable || attempt >= delays.length || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+  }
 }
 
 /**

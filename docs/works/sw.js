@@ -7,7 +7,7 @@
 // Namespaced because the editable dashboard at /app/ shares this origin — and therefore this
 // cache storage. Each app must only ever reap its own generations.
 const CACHE_PREFIX = 'rdo-kkd-works-';
-const CACHE_NAME = `${CACHE_PREFIX}v6`;
+const CACHE_NAME = `${CACHE_PREFIX}v7`;
 
 const APP_SHELL = [
   './',
@@ -53,7 +53,10 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then((cache) =>
+        // Cache each asset individually so one 404 cannot fail the whole install.
+        Promise.allSettled(APP_SHELL.map((asset) => cache.add(asset))),
+      )
       .then(() => self.skipWaiting()),
   );
 });
@@ -94,19 +97,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Stale-while-revalidate: open instantly from the saved shell, and refresh it behind the scenes
+  // so the next visit picks up a new release without waiting for a cache version bump.
   event.respondWith(
-    caches.match(request).then(
-      (cached) =>
-        cached ||
-        fetch(request)
-          .then((response) => {
-            if (response.ok && response.type === 'basic') {
-              const copy = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-            }
-            return response;
-          })
-          .catch(() => caches.match('./index.html')),
-    ),
+    caches.open(CACHE_NAME).then(async (cache) => {
+      const cached = await cache.match(request);
+      const network = fetch(request)
+        .then((response) => {
+          if (response.ok && response.type === 'basic') cache.put(request, response.clone());
+          return response;
+        })
+        .catch(() => null);
+      if (cached) return cached;
+      return (await network) || (await cache.match('./index.html')) || Response.error();
+    }),
   );
 });

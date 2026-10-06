@@ -327,7 +327,7 @@ const memoryCache = () => {
 
 test('a successful fetch is served live and written to the cache', async () => {
   const cache = memoryCache();
-  const repository = createRepository({ remote: async () => ({ headers: [], rows: sampleRows() }), localCache: cache });
+  const repository = createRepository({ remote: async () => ({ headers: [], rows: sampleRows() }), localCache: cache, retryDelays: [0] });
   const result = await repository.loadWorks(profileById('AD'));
 
   assert.equal(result.isOffline, false);
@@ -340,6 +340,7 @@ test('a failed fetch falls back to the cached snapshot', async () => {
   const cache = memoryCache();
   cache.save(sampleRows(), 1700000000000);
   const repository = createRepository({
+    retryDelays: [0],
     remote: async () => {
       throw new Error('Network unreachable');
     },
@@ -355,6 +356,7 @@ test('a failed fetch falls back to the cached snapshot', async () => {
 
 test('with no cache a failed fetch falls back to the offline sample, and says so', async () => {
   const repository = createRepository({
+    retryDelays: [0],
     remote: async () => {
       throw new Error('boom');
     },
@@ -371,6 +373,7 @@ test('with no cache a failed fetch falls back to the offline sample, and says so
 test('a transient failure is retried before giving up', async () => {
   let calls = 0;
   const repository = createRepository({
+    retryDelays: [0],
     remote: async () => {
       calls += 1;
       if (calls === 1) throw new Error('transient');
@@ -385,8 +388,30 @@ test('a transient failure is retried before giving up', async () => {
   assert.equal(result.works.length, 2);
 });
 
+test('a copy synced moments ago is reused; a forced refresh and concurrent loads hit the sheet once', async () => {
+  let calls = 0;
+  const remote = async () => {
+    calls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return { headers: [], rows: sampleRows() };
+  };
+  const repository = createRepository({ remote, localCache: memoryCache(), retryDelays: [0] });
+  const profile = profileById('AD');
+
+  await Promise.all([repository.loadWorks(profile, { force: true }), repository.loadWorks(profile, { force: true })]);
+  assert.equal(calls, 1, 'overlapping loads share one request');
+
+  const reused = await repository.loadWorks(profile);
+  assert.equal(calls, 1, 'a fresh copy is not re-fetched');
+  assert.equal(reused.isOffline, false);
+
+  await repository.loadWorks(profile, { force: true });
+  assert.equal(calls, 2);
+});
+
 test('browser network errors are translated into something actionable', async () => {
   const repository = createRepository({
+    retryDelays: [0],
     remote: async () => {
       throw new TypeError('Failed to fetch');
     },
@@ -400,6 +425,7 @@ test('browser network errors are translated into something actionable', async ()
 
 test('a timeout is reported as a timeout', async () => {
   const repository = createRepository({
+    retryDelays: [0],
     remote: async () => {
       const error = new Error('aborted');
       error.name = 'AbortError';
@@ -413,6 +439,7 @@ test('a timeout is reported as a timeout', async () => {
 test('the failure reason survives even when fallback data is shown', async () => {
   const prefs = stubPrefs();
   const repository = createRepository({
+    retryDelays: [0],
     remote: async () => {
       throw new TypeError('Failed to fetch');
     },

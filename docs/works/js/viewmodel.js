@@ -27,12 +27,12 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
     emit();
   }
 
-  async function refresh() {
+  async function refresh({ force = true } = {}) {
     const hasData = state.allWorks.length > 0;
     update((s) => ({ ...s, isLoading: !hasData, isRefreshing: hasData }));
 
     const profile = state.activeProfile;
-    const result = await repository.loadWorks(profile);
+    const result = await repository.loadWorks(profile, { force });
 
     update((s) =>
       recomputeDerived({
@@ -58,12 +58,13 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
           ...s,
           isLoading: false,
           allWorks: cached.works,
-          isOffline: true,
+          // Not a failure: the saved copy is on screen while the live one loads behind it.
+          isOffline: false,
           lastSyncedAtMillis: cached.lastSyncedAtMillis ?? s.lastSyncedAtMillis,
         }),
       );
     }
-    return refresh();
+    return refresh({ force: false });
   }
 
   return {
@@ -80,7 +81,7 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
       return showCachedThenRefresh(state.activeProfile);
     },
 
-    refresh,
+    refresh: () => refresh({ force: true }),
 
     selectProfile(profile) {
       if (profile.id === state.activeProfile.id) return Promise.resolve();
