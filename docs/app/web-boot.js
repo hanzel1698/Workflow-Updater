@@ -23,7 +23,7 @@
 
   var params = new URLSearchParams(window.location.search);
   var settings = readSettings();
-  var sheetCache = { fromCache: false, savedAt: 0 };
+  var sheetCache = { fromCache: false, savedAt: 0, lastError: '' };
   var deferredInstallPrompt = null;
   var updateRequested = false;
   var reloadingForUpdate = false;
@@ -239,6 +239,7 @@
       return fetchLiveSheet(nativeFetch, input, init, baseUrl).then(
         function (result) {
           sheetCache.fromCache = false;
+          sheetCache.lastError = '';
           sheetCache.savedAt = Date.now();
           saveSheetPayload(baseUrl, result.data);
           updateStatusPill();
@@ -257,6 +258,7 @@
       function (result) {
         var changed = JSON.stringify(result.data) !== JSON.stringify(previous.payload);
         sheetCache.fromCache = false;
+        sheetCache.lastError = '';
         sheetCache.savedAt = Date.now();
         saveSheetPayload(baseUrl, result.data);
         updateStatusPill();
@@ -285,10 +287,14 @@
     return nativeFetch(input, init).then(
       function (response) {
         if (response.ok || response.status < 404) return response;
+        sheetCache.lastError = 'HTTP ' + response.status + ' (attempt ' + (attempt + 1) + ')';
+        console.warn('[sheet] read failed:', sheetCache.lastError);
         var next = retry(response);
         return next === response ? response : next;
       },
       function (err) {
+        sheetCache.lastError = ((err && err.message) || 'network error') + ' (attempt ' + (attempt + 1) + ')';
+        console.warn('[sheet] read failed:', sheetCache.lastError);
         var next = retry(err);
         if (next === err) throw err;
         return next;
@@ -584,7 +590,15 @@
       return;
     }
     if (sheetCache.fromCache) {
-      setPill('Sheet unavailable — showing data saved ' + formatSavedAt(sheetCache.savedAt), 'offline');
+      setPill(
+        'Sheet unavailable' + (sheetCache.lastError ? ' (' + sheetCache.lastError + ')' : '') +
+          ' — showing data saved ' + formatSavedAt(sheetCache.savedAt) + ' · tap to retry',
+        'offline',
+        function () {
+          requireLiveNextRead();
+          if (typeof window.loadData === 'function') window.loadData();
+        }
+      );
       return;
     }
     setPill('');
