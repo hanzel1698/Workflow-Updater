@@ -2659,6 +2659,34 @@ async function handleAddTaskSubmit(e) {
   }
 }
 
+// Apps Script now and then answers a valid write with a Google HTML error page (transient 404,
+// quota or timeout) instead of JSON. An update writes fixed values to a fixed row, so sending it
+// again is harmless; only after every attempt fails is the edit rolled back.
+async function postUpdateWithRetry(scriptUrl, payload) {
+  const delays = [2000, 5000];
+  let lastError;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      const response = await fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+      });
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error('Google returned an error page instead of a result (HTTP ' + response.status + ')');
+      }
+    } catch (err) {
+      lastError = err;
+      if (attempt < delays.length) await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+    }
+  }
+  throw lastError;
+}
+
 // Handle Edit Task Form Submission (Optimistic UI Update!)
 async function handleEditTaskSubmit(e) {
   e.preventDefault();
@@ -2702,14 +2730,7 @@ async function handleEditTaskSubmit(e) {
 
   // 2. FULFILL WRITE OPERATION IN BACKGROUND
   try {
-    const response = await fetch(currentScriptUrl, {
-      method: 'POST',
-      mode: 'cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(updatePayload)
-    });
-    
-    const result = await response.json();
+    const result = await postUpdateWithRetry(currentScriptUrl, updatePayload);
     if (result.success) {
       showToast(`Google Sheets successfully updated!`, 'success');
     } else {
