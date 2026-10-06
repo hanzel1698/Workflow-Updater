@@ -171,7 +171,10 @@
 
       var baseUrl = url.split('?')[0];
 
-      return nativeFetch(input, init).then(
+      // Apps Script is slow (15-80s on a 1 MB sheet) and now and then answers a perfectly valid
+      // request with a transient Google 404 or a dropped connection. Retry before falling back to
+      // the saved copy, so a hiccup does not strand the app on stale data.
+      return fetchSheetWithRetry(nativeFetch, input, init).then(
         function (response) {
           if (!response.ok) return replayCache(baseUrl, new Error('HTTP ' + response.status), response);
           // A live answer clears any "showing saved data" state from an earlier sync.
@@ -196,6 +199,32 @@
         }
       );
     };
+  }
+
+  var SHEET_RETRY_DELAYS = [1500, 4000, 8000];
+
+  function fetchSheetWithRetry(nativeFetch, input, init, attempt) {
+    attempt = attempt || 0;
+    var retry = function (reason) {
+      if (attempt >= SHEET_RETRY_DELAYS.length || !navigator.onLine) return reason;
+      return new Promise(function (resolve) {
+        window.setTimeout(resolve, SHEET_RETRY_DELAYS[attempt]);
+      }).then(function () {
+        return fetchSheetWithRetry(nativeFetch, input, init, attempt + 1);
+      });
+    };
+    return nativeFetch(input, init).then(
+      function (response) {
+        if (response.ok || response.status < 404) return response;
+        var next = retry(response);
+        return next === response ? response : next;
+      },
+      function (err) {
+        var next = retry(err);
+        if (next === err) throw err;
+        return next;
+      }
+    );
   }
 
   function replayCache(baseUrl, err, fallbackResponse) {
