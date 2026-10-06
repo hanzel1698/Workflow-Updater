@@ -23,7 +23,7 @@
 
   var params = new URLSearchParams(window.location.search);
   var settings = readSettings();
-  var sheetCache = { fromCache: false, savedAt: 0, lastError: '' };
+  var sheetCache = { fromCache: false, savedAt: 0, lastError: '', refreshing: false };
   var deferredInstallPrompt = null;
   var updateRequested = false;
   var reloadingForUpdate = false;
@@ -238,6 +238,7 @@
       // Nothing saved yet (or a read that must be live): wait for the sheet.
       return fetchLiveSheet(nativeFetch, input, init, baseUrl).then(
         function (result) {
+          sheetCache.refreshing = false;
           sheetCache.fromCache = false;
           sheetCache.lastError = '';
           sheetCache.savedAt = Date.now();
@@ -253,10 +254,12 @@
   }
 
   function refreshInBackground(nativeFetch, input, init, baseUrl, previous) {
-    setPill('Refreshing from sheet…', 'syncing');
+    sheetCache.refreshing = true;
+    updateStatusPill();
     fetchLiveSheet(nativeFetch, input, init, baseUrl).then(
       function (result) {
         var changed = JSON.stringify(result.data) !== JSON.stringify(previous.payload);
+        sheetCache.refreshing = false;
         sheetCache.fromCache = false;
         sheetCache.lastError = '';
         sheetCache.savedAt = Date.now();
@@ -265,6 +268,7 @@
         if (changed && typeof window.loadData === 'function') window.loadData();
       },
       function () {
+        sheetCache.refreshing = false;
         sheetCache.fromCache = true;
         sheetCache.savedAt = previous.savedAt || 0;
         updateStatusPill();
@@ -320,7 +324,7 @@
   function announceCachedData() {
     var stamp = formatSavedAt(sheetCache.savedAt);
     if (typeof window.showToast === 'function') {
-      window.showToast('Offline copy — showing sheet data saved ' + stamp, 'warning');
+      window.showToast('NOT LIVE DATA — showing the sheet copy saved ' + stamp, 'error');
     }
     updateStatusPill();
   }
@@ -351,8 +355,17 @@
       'background:var(--bg-card-elevated);color:var(--text-secondary);box-shadow:var(--shadow-float);',
       'cursor:default;max-width:min(30rem,calc(100vw - 8rem));}',
       '.wu-status-pill.visible{display:flex;}',
-      '.wu-status-pill.offline{border-color:transparent;color:var(--tone-warning);',
-      'background:var(--tone-warning-bg);}',
+      '.wu-status-pill.offline{border-color:#fecaca;color:#fff;background:#dc2626;}',
+      '.wu-stale-banner{position:sticky;top:0;z-index:950;display:flex;align-items:center;justify-content:center;',
+      'gap:.6rem;padding:.7rem 1rem;background:#dc2626;color:#fff;font-family:var(--font-sans);',
+      'font-size:.88rem;line-height:1.4;text-align:center;border-bottom:3px solid #7f1d1d;',
+      'box-shadow:0 2px 10px rgba(220,38,38,.55);animation:wu-stale-pulse 2.2s ease-in-out infinite;}',
+      '.wu-badge-stale,.wu-badge-stale:hover{background:#dc2626 !important;color:#fff !important;border-color:#7f1d1d !important;font-weight:700;}',
+      '.wu-stale-banner strong{font-weight:800;letter-spacing:.04em;}',
+      '.wu-stale-icon{font-size:1.15rem;flex-shrink:0;}',
+      '@keyframes wu-stale-pulse{0%,100%{background:#dc2626;}50%{background:#b91c1c;}}',
+      '@media (prefers-reduced-motion:reduce){.wu-stale-banner{animation:none;}}',
+      '@media print{.wu-stale-banner{display:none !important;}}',
       '.wu-status-pill.update{border-color:var(--accent);color:var(--text-primary);cursor:pointer;}',
       '.wu-status-pill .wu-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}',
       '.wu-hint{color:var(--text-muted);font-size:.82rem;line-height:1.55;margin-bottom:1.25rem;}',
@@ -576,29 +589,78 @@
     pill.onclick = onClick || null;
   }
 
+  // A saved copy on screen must never pass for the live sheet, so it gets a full-width red banner
+  // that stays pinned to the top of the page for as long as the data is not live.
+  function setStaleBanner(text, onClick) {
+    var banner = document.getElementById('wu-stale-banner');
+    if (!text) {
+      if (banner) banner.remove();
+      return;
+    }
+    if (!banner) {
+      if (!document.body) return;
+      banner = document.createElement('div');
+      banner.id = 'wu-stale-banner';
+      banner.className = 'wu-stale-banner';
+      banner.setAttribute('role', 'alert');
+      document.body.insertBefore(banner, document.body.firstChild);
+    }
+    banner.style.cursor = onClick ? 'pointer' : 'default';
+    banner.onclick = onClick || null;
+    banner.innerHTML =
+      '<span class="wu-stale-icon">⚠</span><span><strong>NOT LIVE DATA</strong> — ' + escapeHtml(text) + '</span>';
+  }
+
+  // The header badge reads "Live Sheets Connected" in green; while the screen is a saved copy that
+  // would contradict the banner, so it turns red and says so.
+  function syncConnectionBadge(isStale) {
+    var badge = document.getElementById('simulation-toggle-btn');
+    if (!badge) return;
+    if (isStale) {
+      badge.classList.add('wu-badge-stale');
+      badge.innerHTML = '<span class="wu-stale-icon">⚠</span> Saved copy — not live';
+    } else if (badge.classList.contains('wu-badge-stale')) {
+      badge.classList.remove('wu-badge-stale');
+      if (typeof window.updateSimulationToggleUI === 'function') window.updateSimulationToggleUI();
+    }
+  }
+
+  function retrySheetNow() {
+    requireLiveNextRead();
+    if (typeof window.loadData === 'function') window.loadData();
+  }
+
   function updateStatusPill() {
+    syncConnectionBadge(Boolean(sheetCache.fromCache || sheetCache.refreshing));
+    if (sheetCache.refreshing && !sheetCache.fromCache) {
+      setStaleBanner(
+        'refreshing from the sheet… this is a copy saved ' + formatSavedAt(sheetCache.savedAt) +
+          '. Do not rely on it until this banner clears.'
+      );
+    } else if (sheetCache.fromCache) {
+      var savedLabel = 'showing a copy saved ' + formatSavedAt(sheetCache.savedAt) + '. Edits may be out of date.';
+      if (!navigator.onLine) {
+        setStaleBanner('you are offline, ' + savedLabel);
+      } else {
+        setStaleBanner(
+          'the sheet could not be reached' + (sheetCache.lastError ? ' (' + sheetCache.lastError + ')' : '') +
+            ', ' + savedLabel + ' Tap to retry.',
+          retrySheetNow
+        );
+      }
+    } else {
+      setStaleBanner('');
+    }
+
     if (document.getElementById('wu-status-pill') && document.getElementById('wu-status-pill').classList.contains('update')) {
       return; // an available update outranks the connection state
     }
-    if (!navigator.onLine) {
-      setPill(
-        sheetCache.fromCache
-          ? 'Offline — showing data saved ' + formatSavedAt(sheetCache.savedAt)
-          : 'Offline — changes cannot be saved',
-        'offline'
-      );
+    if (!navigator.onLine && !sheetCache.fromCache) {
+      setPill('Offline — changes cannot be saved', 'offline');
       return;
     }
     if (sheetCache.fromCache) {
-      setPill(
-        'Sheet unavailable' + (sheetCache.lastError ? ' (' + sheetCache.lastError + ')' : '') +
-          ' — showing data saved ' + formatSavedAt(sheetCache.savedAt) + ' · tap to retry',
-        'offline',
-        function () {
-          requireLiveNextRead();
-          if (typeof window.loadData === 'function') window.loadData();
-        }
-      );
+      setPill(''); // the banner already says it
       return;
     }
     setPill('');
