@@ -2677,7 +2677,9 @@ async function postUpdateWithRetry(scriptUrl, payload) {
       try {
         return JSON.parse(text);
       } catch {
-        throw new Error('Google returned an error page instead of a result (HTTP ' + response.status + ')');
+        const unconfirmed = new Error('Google returned an error page instead of a result (HTTP ' + response.status + ')');
+        unconfirmed.outcomeUnknown = true;
+        throw unconfirmed;
       }
     } catch (err) {
       lastError = err;
@@ -2738,6 +2740,15 @@ async function handleEditTaskSubmit(e) {
     }
   } catch (err) {
     console.error(err);
+
+    // Google can save the edit and still answer with an error page. With no JSON to say either way,
+    // rolling back would hide a change that is really in the sheet — re-read the sheet instead.
+    if (err.outcomeUnknown) {
+      showToast('Could not confirm the save (' + err.message + '). Re-checking the sheet…', 'warning');
+      loadData();
+      return;
+    }
+
     showToast(`Failed to update Google Sheet: ${err.message}. Rolling back.`, 'error');
     
     // 3. API FAILURE ROLLBACK: Restore original values and re-render dashboard
