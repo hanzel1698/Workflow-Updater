@@ -85,3 +85,37 @@ export const ProfilePrefs = {
     writeItem(KEY_LAST_SEEN_VERSION_CODE, String(value));
   },
 };
+
+const KEY_BULK_NAMES = 'workflow_updater.bulk_engineer_names';
+const KEY_BULK_SELECTED = 'workflow_updater.bulk_selected_ids';
+
+/** The bulk Excel → PDF screen's engineer names and ticks, remembered between visits. */
+export const BulkPrefs = {
+  /** Profile id → the name typed for it. */
+  get names() {
+    try {
+      const parsed = JSON.parse(readItem(KEY_BULK_NAMES) || '{}');
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  },
+
+  set names(value) {
+    writeItem(KEY_BULK_NAMES, JSON.stringify(value));
+  },
+
+  /** Ticked profile ids, or `null` before the screen has ever been used. */
+  get selectedIds() {
+    try {
+      const parsed = JSON.parse(readItem(KEY_BULK_SELECTED) || 'null');
+      return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : null;
+    } catch {
+      return null;
+    }
+  },
+
+  set selectedIds(value) {
+    writeItem(KEY_BULK_SELECTED, JSON.stringify(value));
+  },
+};

@@ -29,7 +29,9 @@ The Pages site hosts both, for two different jobs:
 | [`/works/`](https://hanzel1698.github.io/Workflow-Updater/works/) | **Read-only works viewer** — the Android app's feature set, built for a phone in the field: search, status chips, filters, A3 PDF report. Opened on a desktop PC it uses the whole window instead of a phone column | `docs/works/` |
 
 Both read the same Google Sheet through the same Apps Script Web App, and both work offline once
-loaded. Use `/app/` at a desk when you need to change something; use `/works/` on a phone when you
+loaded. When that read is slow, `/works/#/bulk` (**PDFs from Excel**) builds every engineer's A3
+report in one go from a downloaded `.xlsx` of the sheet instead — see
+[`docs/works/README.md`](docs/works/README.md#pdfs-from-excel). Use `/app/` at a desk when you need to change something; use `/works/` on a phone when you
 only need to look something up.
 
 `/works/` and `android/` are read-only viewers that share the same engineer roster, design-status
