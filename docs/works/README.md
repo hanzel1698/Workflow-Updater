@@ -68,6 +68,7 @@ office intranet share) works the same way.
 | Sample data when there is no network and no cache | ✅ | |
 | Installable to the home screen | ✅ | Web app manifest + icons; Android ships as an APK |
 | — | ➕ | **Desktop layout**: on a PC the app drops the phone column and uses the whole window (see below). The Android app has no equivalent |
+| — | ➕ | **PDFs from Excel**: every engineer's report in one go from a downloaded copy of the sheet, with no Apps Script read (see below). Web only |
 
 The web app is read-only, like the Android app: no add, edit or delete. For editing, use the
 desktop dashboard in `windows/`.
@@ -103,6 +104,41 @@ switches layouts live. What the desktop layout does with the extra room:
 - **The What's New and profile gates keep a readable measure** — full width helps a list, not a
   paragraph.
 
+## PDFs from Excel
+
+Reading the sheet through Apps Script can take a minute and a half. The **PDFs from Excel**
+screen (`#/bulk`) skips it: download the sheet from Google Sheets (**File → Download → Microsoft
+Excel**), pick the file, type a name for each engineer, and save one A3 report per engineer in a
+single step. The reports show the sheet exactly as it was downloaded, so they can be newer than
+what the list on screen shows.
+
+It is reached from the app bar's upload button on a wide screen, from the **Export PDF** dialog,
+and from the "Taking a while?" link while the sheet is still loading. A direct link to
+`/works/#/bulk` opens it without waiting for anything.
+
+- **Reading the file** (`js/excelImport.js`) mirrors `doGet` in `windows/google_apps_script.js`:
+  the `WORKFLOW MONITORING SHEET` tab (else the first non-`OLD` tab with a header row), the
+  header row found by `Name of Work` / `e-Office File Number`, and only rows with a Name of Work.
+  Date cells are read from Excel's day number, so no timezone can shift the day. Against the live
+  sheet, every engineer's report came out byte-identical to the Apps Script one.
+- **Engineers** (`js/bulkReports.js`): the roster, "All engineers", then any ASE value in the
+  file's RDO KKD rows that is not on the roster (a new engineer, or "Not Assigned"). Names and
+  ticks are remembered in `localStorage`; AD's roster name is pre-filled.
+- **The PDF** (`js/pdfDocument.js`) is drawn with jsPDF + AutoTable from the same
+  `buildReportModel` the print view uses: same title, groups, NIL rows, column proportions,
+  fills and rules, header repeated on every page, no row split, and no status heading left alone
+  at the foot of a page. Text is set slightly smaller than the print view because Helvetica runs
+  wider than Segoe UI, and a word too long for its column is shrunk rather than broken.
+  Helvetica covers Latin-1 only: anything outside it is flagged on the result, and each
+  engineer's **print** button opens the browser print view, which draws every character.
+- **Saving** (`js/ui/saveFiles.js`): Chrome and Edge on a computer ask for a **folder** and write
+  every PDF into it (a same-named report there is replaced), or ask **where to save** the single
+  ZIP. Other browsers cannot pick a location from a page, so the files go through the normal
+  download, which asks where only when the browser's "Ask where to save each file" setting is on.
+- **Libraries** live in `vendor/` (SheetJS mini 0.18.5, jsPDF 2.5.1, jsPDF-AutoTable 3.8.4,
+  JSZip 3.10.1, copied from cdnjs) and load only when the screen is used, so the list never pays
+  for them. The file is never uploaded anywhere.
+
 ## Layout
 
 | Path | Purpose |
@@ -114,7 +150,10 @@ switches layouts live. What the desktop layout does with the extra room:
 | `js/cache.js`, `js/prefs.js` | `localStorage` snapshot and persisted preferences |
 | `js/state.js`, `js/chipOrder.js` | Derived state (filters, options, counts) and chip ordering |
 | `js/viewmodel.js` | Screen state and the actions that change it |
-| `js/report.js` | A3 landscape PDF report HTML |
+| `js/report.js` | The report model (`buildReportModel`) and its A3 landscape print HTML |
+| `js/excelImport.js` | Reads the workflow rows out of an Excel copy of the sheet |
+| `js/bulkReports.js`, `js/pdfDocument.js` | PDFs from Excel: the per-engineer plan, and the report drawn as a PDF file |
+| `js/vendor.js`, `vendor/` | On-demand loader and the SheetJS / jsPDF / AutoTable / JSZip builds it loads |
 | `js/ui/` | Screens, sheets, dialogs, chips, cards |
 | `js/ui/deviceLayout.js` | Desktop-PC detection; stamps `data-device` on `<html>` for the desktop layout |
 | `js/ui/theme.js` | The app bar's dark/light button; the stored choice is shared with `/app/` |
@@ -131,7 +170,7 @@ node docs/works/tests/run-tests.mjs
 
 No dependencies. Covers status mapping, date formatting, profile filtering, derived state and
 cascading filter options, chip ordering, repository fallbacks, view-model actions, desktop-PC
-detection and the PDF report — the same ground as `android/app/src/test/`.
+detection, the PDF report, and the Excel import and bulk reports — the same ground as `android/app/src/test/`.
 
 ## Keeping it in sync with the app
 

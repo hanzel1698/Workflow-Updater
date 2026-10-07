@@ -8,6 +8,7 @@ import { createRepository } from './repository.js';
 import { createWorksViewModel } from './viewmodel.js';
 import { applyDesktopLayout } from './ui/deviceLayout.js';
 import { createDefaultProfileSetupScreen } from './ui/setupScreen.js';
+import { createBulkScreen } from './ui/bulkScreen.js';
 import { createDetailScreen } from './ui/detailScreen.js';
 import { createMainScreen } from './ui/mainScreen.js';
 import {
@@ -26,7 +27,16 @@ function mount(screen) {
   appRoot.replaceChildren(screen.root);
 }
 
+const BULK_HASH = '#/bulk';
+const isBulkRoute = () => window.location.hash === BULK_HASH;
+
 async function boot() {
+  // A link straight to the Excel screen skips the gates: it needs no profile and no sheet read.
+  if (isBulkRoute()) {
+    openBulkStandalone();
+    return;
+  }
+
   const notes = await loadReleaseNotes();
   if (shouldShowReleaseNotes(notes)) {
     mount(
@@ -41,6 +51,21 @@ async function boot() {
     return;
   }
   startDefaultProfileGate();
+}
+
+/** The Excel screen opened before the app itself; leaving it starts the app as normal. */
+function openBulkStandalone() {
+  const leave = () => {
+    window.removeEventListener('hashchange', onHashChange);
+    if (isBulkRoute()) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    boot();
+  };
+  const onHashChange = () => {
+    if (!isBulkRoute()) leave();
+  };
+  window.addEventListener('hashchange', onHashChange);
+  mount(createBulkScreen({ onBack: leave }));
+  window.scrollTo(0, 0);
 }
 
 function startDefaultProfileGate() {
@@ -66,12 +91,17 @@ function startApp() {
     onWorkClick: (rowNum) => {
       window.location.hash = `#/work/${rowNum}`;
     },
+    onOpenBulk: () => {
+      window.location.hash = BULK_HASH;
+    },
   });
 
   /** `null` on the list, otherwise the row number of the open detail view. */
   let openDetailRow = null;
   /** Whether the mounted detail view found its work — a deep link can land before the sheet loads. */
   let detailHasWork = false;
+  /** Whether the Excel screen is mounted; the list keeps loading behind it but stays unmounted. */
+  let bulkOpen = false;
 
   function showMain() {
     openDetailRow = null;
@@ -88,13 +118,27 @@ function startApp() {
     window.scrollTo(0, 0);
   }
 
+  function showBulk() {
+    openDetailRow = null;
+    detailHasWork = false;
+    bulkOpen = true;
+    mount(createBulkScreen({ onBack: () => window.history.back() }));
+    window.scrollTo(0, 0);
+  }
+
   function route() {
+    bulkOpen = false;
+    if (isBulkRoute()) {
+      showBulk();
+      return;
+    }
     const match = /^#\/work\/(-?\d+)$/.exec(window.location.hash);
     if (match) showDetail(Number.parseInt(match[1], 10));
     else showMain();
   }
 
   viewModel.subscribe((state) => {
+    if (bulkOpen) return;
     if (openDetailRow === null) {
       mainScreen.render(state);
       return;

@@ -12,13 +12,14 @@ import { createFilterResultChip, createStatChipsRow } from './chips.js';
 import { showFilterSheet } from './filterSheet.js';
 import { profileDisplayName, showProfileSheet } from './profileSheet.js';
 import { showExportPdfNameDialog } from './exportDialog.js';
+import { openDialog } from './dialog.js';
 import { jobNameFor, printReport } from './pdfExport.js';
 import { showToast } from './toast.js';
 import { workCard } from './workCard.js';
 import { attachPullToRefresh } from './pullToRefresh.js';
 import { createThemeToggle } from './theme.js';
 
-export function createMainScreen({ viewModel, onWorkClick }) {
+export function createMainScreen({ viewModel, onWorkClick, onOpenBulk }) {
   let state = viewModel.getState();
 
   const subtitle = el('p', { className: 'app-bar-subtitle' });
@@ -48,6 +49,15 @@ export function createMainScreen({ viewModel, onWorkClick }) {
   });
   filterButton.append(filterBadge);
 
+  // Wide screens only: a phone's bar is already full, and reaches the same screen from Export PDF.
+  const bulkButton = onOpenBulk
+    ? iconButton(Icons.uploadFile(), {
+        label: 'PDFs for every engineer from an Excel file',
+        className: 'wide-only',
+        onClick: onOpenBulk,
+      })
+    : null;
+
   const appBar = el('header', { className: 'app-bar' }, [
     el('span', { className: 'brand-mark', html: Icons.apartment(), attrs: { 'aria-hidden': 'true' } }),
     el('div', { className: 'app-bar-titles' }, [
@@ -56,6 +66,7 @@ export function createMainScreen({ viewModel, onWorkClick }) {
     ]),
     el('div', { className: 'app-bar-actions' }, [
       createThemeToggle(),
+      bulkButton,
       profileButton,
       refreshButton,
       filterButton,
@@ -109,12 +120,44 @@ export function createMainScreen({ viewModel, onWorkClick }) {
   function onExportClick() {
     if (state.isExporting) return;
     if (state.filteredWorks.length === 0) {
+      if (onOpenBulk && (state.isLoading || state.isRefreshing)) {
+        showNoWorksYetDialog();
+        return;
+      }
       showToast('No works to export');
       return;
     }
     showExportPdfNameDialog({
       designation: state.activeProfile.id,
       onConfirm: (engineerName) => exportPdf(engineerName),
+      onBulk: onOpenBulk,
+    });
+  }
+
+  /** The sheet is still loading: offer the Excel route rather than a dead end. */
+  function showNoWorksYetDialog() {
+    openDialog({
+      title: 'Export PDF',
+      body: el('p', {
+        className: 'dialog-text',
+        text:
+          'The works are still loading from the sheet. You can wait, or make the reports now from an Excel ' +
+          'copy of the sheet (File → Download → Microsoft Excel in Google Sheets).',
+      }),
+      actions: (close) => [
+        el('button', { className: 'text-btn', text: 'Wait', attrs: { type: 'button' }, on: { click: close } }),
+        el('button', {
+          className: 'filled-btn',
+          text: 'Use an Excel file',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              close();
+              onOpenBulk();
+            },
+          },
+        }),
+      ],
     });
   }
 
@@ -174,7 +217,20 @@ export function createMainScreen({ viewModel, onWorkClick }) {
     clear(list);
 
     if (state.isLoading) {
-      list.append(el('div', { className: 'state-block' }, [el('span', { className: 'spinner large' })]));
+      list.append(
+        el('div', { className: 'state-block' }, [
+          el('span', { className: 'spinner large' }),
+          // A first read of the sheet can take a minute and a half; reports need not wait for it.
+          onOpenBulk
+            ? el('button', {
+                className: 'link-btn',
+                text: 'Taking a while? Make the PDF reports from an Excel file',
+                attrs: { type: 'button' },
+                on: { click: onOpenBulk },
+              })
+            : null,
+        ]),
+      );
       return;
     }
 

@@ -1104,3 +1104,116 @@ button { font-family: inherit; }
 
 /* The FAB was centred against the 900px column; now it follows the window edge. */
 :root[data-device='desktop'] .fab { right: var(--gutter); }
+
+/* ---------- PDFs from Excel (js/ui/bulkScreen.js) ---------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* The phone bar is full; the Excel screen is reached from Export PDF there instead. */
+.wide-only { display: none; }
+@media (min-width: 700px) {
+  .wide-only { display: inline-flex; }
+}
+
+.export-bulk-link { margin-top: 0.875rem; padding: 0; text-align: left; font-size: 0.8rem; }
+
+/* A form, not a reading layout: one comfortable column, even on a desktop PC. */
+.bulk-body,
+:root[data-device='desktop'] .bulk-body {
+  width: 100%;
+  max-width: 860px;
+  margin-inline: auto;
+  columns: auto;
+}
+
+.bulk-card { padding: 0.875rem; }
+.bulk-help { margin: 0 0 0.875rem; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; }
+.bulk-help strong { color: var(--text-primary); font-weight: 600; }
+
+.bulk-drop {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1rem;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card-elevated);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.bulk-drop:hover,
+.bulk-drop.dragging { border-color: var(--accent); background: var(--accent-soft); }
+#bulk-file:focus-visible + .bulk-drop { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bulk-drop-icon { display: inline-flex; color: var(--accent); }
+.bulk-drop-icon svg { width: 32px; height: 32px; }
+.bulk-drop-text { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; }
+.bulk-drop-text span { color: var(--text-secondary); font-size: 0.78rem; }
+
+.bulk-file-status { margin: 0.75rem 0 0; color: var(--text-secondary); font-size: 0.8rem; line-height: 1.45; overflow-wrap: anywhere; }
+.bulk-file-status[data-tone],
+.bulk-hint[data-tone] { background: none; }
+.bulk-file-status[data-tone='success'] { color: var(--tone-success); }
+.bulk-file-status[data-tone='danger'] { color: var(--tone-danger); }
+
+.bulk-engineers { display: flex; flex-direction: column; }
+
+.bulk-engineer {
+  display: grid;
+  grid-template-columns: auto 4.25rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.bulk-engineer:last-child { border-bottom: 0; }
+
+.bulk-check { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.bulk-id { color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.3px; }
+.bulk-engineer.included .bulk-id { color: var(--accent); }
+.bulk-name { padding: 0.55rem 0.7rem; font-size: 0.875rem; }
+.bulk-count { min-width: 4.5rem; color: var(--text-secondary); font-size: 0.78rem; text-align: right; white-space: nowrap; }
+.bulk-preview { width: 40px; height: 40px; color: var(--text-secondary); }
+.bulk-preview svg { width: 20px; height: 20px; }
+.bulk-preview:disabled { opacity: 0.35; cursor: default; }
+.bulk-preview:disabled:hover { background: none; }
+
+.bulk-subhead { margin: 0.875rem 0 0.25rem; color: var(--text-muted); font-size: 0.75rem; }
+
+.bulk-date-row { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.875rem; flex-wrap: wrap; }
+.bulk-date-row .text-field-label { margin: 0; }
+.bulk-date { width: auto; padding: 0.5rem 0.7rem; color-scheme: inherit; }
+
+.bulk-actions { display: flex; flex-direction: column; align-items: stretch; gap: 0.5rem; }
+.bulk-actions .filled-btn.busy { cursor: progress; }
+.bulk-zip { align-self: center; padding: 0.5rem 0.75rem; }
+.bulk-hint { margin: 0.125rem 0 0; color: var(--text-secondary); font-size: 0.78rem; line-height: 1.45; text-align: center; }
+.bulk-hint[data-tone='warning'] { color: var(--tone-warning); }
+
+.bulk-results {
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+.bulk-results-title { margin: 0.625rem 0 0.25rem; color: var(--tone-success); font-size: 0.85rem; font-weight: 600; }
+.bulk-result { display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border-subtle); }
+.bulk-result:last-child { border-bottom: 0; }
+.bulk-result-icon { display: inline-flex; color: var(--tone-success); }
+.bulk-result-icon svg { width: 18px; height: 18px; }
+.bulk-result-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bulk-result-name { font-size: 0.82rem; overflow-wrap: anywhere; }
+.bulk-result-meta { color: var(--text-muted); font-size: 0.75rem; }
+
+/* A narrow phone: the name gets its own line under the tick, id and count. */
+@media (max-width: 480px) {
+  .bulk-engineer { grid-template-columns: auto 1fr auto auto; row-gap: 0.375rem; }
+  .bulk-name { grid-column: 1 / -1; grid-row: 2; }
+}

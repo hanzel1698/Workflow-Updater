@@ -105,7 +105,7 @@ export const REPORT_PAGE_CSS = '@page { size: A3 landscape; margin: 1cm; }';
  * written out by hand: a row one cell short leaves the last column with no cell at all, and
  * an absent cell draws no borders, so the printed table ends in a gap.
  */
-const COLUMN_COUNT = 14;
+const COLUMN_COUNT = 14; // REPORT_COLUMNS.length, asserted by the tests
 
 /**
  * The status groups the report prints, in canonical order.
@@ -121,20 +121,78 @@ function reportStatuses(statusCodes) {
   return STATUS_OPTIONS.filter((status) => statusCodes.includes(status.slice(0, 2)));
 }
 
-/** The report itself, without any surrounding document. */
-export function buildReportBody(works, profile, engineerName, { statusCodes = [] } = {}) {
-  const title = reportTitle(profile.id, engineerName);
-  const statuses = reportStatuses(statusCodes);
+/**
+ * The report's columns, in order: header label, width in the report's px grid (the HTML colgroup;
+ * the PDF scales the same proportions onto the page), alignment of the body cells and whether the
+ * header is one of the small two-line date headers.
+ */
+export const REPORT_COLUMNS = [
+  { label: 'Name of Work', width: 350, align: 'left', value: (w) => w.workName },
+  { label: 'District', width: 120, align: 'left', value: (w) => w.district },
+  { label: 'LAC', width: 100, align: 'left', value: (w) => w.lac },
+  { label: 'AS Status', width: 80, align: 'center', value: (w) => w.asStatus },
+  { label: 'AR Status', width: 80, align: 'center', value: (w) => w.arStatus },
+  { label: 'SR Status', width: 80, align: 'center', value: (w) => w.srStatus },
+  { label: 'No. of Floors', width: 90, align: 'center', value: (w) => w.floors },
+  { label: 'Total Area (m\u00b2)', width: 110, align: 'center', headerAlign: 'center', value: (w) => w.area },
+  { label: 'SE', width: 80, align: 'center', value: (w) => w.se },
+  { label: 'Remarks by Building Design Unit', width: 395, align: 'left', remarks: true, value: (w) => w.remarks },
+  { label: 'Target Date', width: 105, align: 'center', dateHeader: true, value: (w) => formatDate(w.targetDate) },
+  { label: 'Tentative Issued Date', width: 105, align: 'center', dateHeader: true, value: (w) => formatDate(w.tentativeIssuedDate) },
+  {
+    label: 'Detailed Design Last Issued Date',
+    width: 115,
+    align: 'center',
+    dateHeader: true,
+    value: (w) => formatDate(w.detailedLastIssuedDate),
+  },
+  {
+    label: 'Detailed Design Complete Issued Date',
+    width: 115,
+    align: 'center',
+    dateHeader: true,
+    value: (w) => formatDate(w.detailedCompleteIssuedDate),
+  },
+];
 
-  const bodyRows = statuses.map((status) => {
-    const groupWorks = works.filter((work) => work.status === status);
-    const suffix = groupWorks.length === 1 ? 'WORK' : 'WORKS';
+/**
+ * Everything the report says, independent of how it is drawn: the print view (HTML) and the bulk
+ * PDF writer (js/pdfDocument.js) both render this, so the two can never disagree on a title,
+ * a group, a count or a cell.
+ *
+ * Each group's `rows` holds the plain cell text for every work, blanks already turned into "-";
+ * an empty group has no rows and is printed as NIL.
+ */
+export function buildReportModel(works, profile, engineerName, { statusCodes = [], date } = {}) {
+  const statuses = reportStatuses(statusCodes);
+  return {
+    title: reportTitle(profile.id, engineerName, date),
+    totalWorks: works.length,
+    // Naming the picked statuses keeps a narrowed report honest: without it a reader has no way
+    // to tell a report covering two statuses from one where the office happens to have works in two.
+    scopeNote: statuses.length === STATUS_OPTIONS.length ? '' : `Design status: ${statuses.join('; ')}`,
+    groups: statuses.map((status) => {
+      const groupWorks = works.filter((work) => work.status === status);
+      const suffix = groupWorks.length === 1 ? 'WORK' : 'WORKS';
+      return {
+        heading: `${status.toUpperCase()} : ${groupWorks.length} ${suffix}`,
+        rows: groupWorks.map((work) => REPORT_COLUMNS.map((column) => cellText(column.value(work)))),
+      };
+    }),
+  };
+}
+
+/** The report itself, without any surrounding document. */
+export function buildReportBody(works, profile, engineerName, options = {}) {
+  const model = buildReportModel(works, profile, engineerName, options);
+
+  const bodyRows = model.groups.map((group) => {
     const heading =
       `<tr class="status-group-row"><td colspan="${COLUMN_COUNT}">` +
-      `${escapeHtml(`${status.toUpperCase()} : ${groupWorks.length} ${suffix}`)}` +
+      `${escapeHtml(group.heading)}` +
       `</td></tr>`;
 
-    if (groupWorks.length === 0) {
+    if (group.rows.length === 0) {
       return (
         heading +
         '<tr class="nil-row"><td style="color:#94a3b8;font-style:italic;font-weight:500;font-size:8.5pt;padding:8px;">NIL</td>' +
@@ -143,19 +201,14 @@ export function buildReportBody(works, profile, engineerName, { statusCodes = []
       );
     }
 
-    return heading + groupWorks.map(taskRow).join('');
+    return heading + group.rows.map(taskRow).join('');
   }).join('');
 
-  // Naming the picked statuses keeps a narrowed report honest: without it a reader has no way to
-  // tell a report covering two statuses from one where the office happens to have works in two.
-  const scopeNote =
-    statuses.length === STATUS_OPTIONS.length
-      ? ''
-      : `\n  <p class="report-scope-note">Design status: ${escapeHtml(statuses.join('; '))}</p>`;
+  const scopeNote = model.scopeNote === '' ? '' : `\n  <p class="report-scope-note">${escapeHtml(model.scopeNote)}</p>`;
 
   return `<div class="report-root">
-  <div class="header-container"><h1>${escapeHtml(title)}</h1></div>
-  <p class="total-works-summary">Total number of works: ${works.length}</p>${scopeNote}
+  <div class="header-container"><h1>${escapeHtml(model.title)}</h1></div>
+  <p class="total-works-summary">Total number of works: ${model.totalWorks}</p>${scopeNote}
   <table>
     <colgroup>
       <col style="width: 350px" /><col style="width: 120px" /><col style="width: 100px" />
@@ -191,7 +244,7 @@ export function buildReportBody(works, profile, engineerName, { statusCodes = []
 
 /** The report as a complete, standalone printable document. */
 export function buildReportHtml(works, profile, engineerName, options = {}) {
-  const title = reportTitle(profile.id, engineerName);
+  const title = reportTitle(profile.id, engineerName, options.date);
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -213,30 +266,14 @@ ${buildReportBody(works, profile, engineerName, options)}
 </html>`;
 }
 
-function taskRow(work) {
-  return (
-    '<tr>' +
-    `<td>${cell(work.workName)}</td>` +
-    `<td>${cell(work.district)}</td>` +
-    `<td>${cell(work.lac)}</td>` +
-    `<td class="center">${cell(work.asStatus)}</td>` +
-    `<td class="center">${cell(work.arStatus)}</td>` +
-    `<td class="center">${cell(work.srStatus)}</td>` +
-    `<td class="center">${cell(work.floors)}</td>` +
-    `<td class="center">${cell(work.area)}</td>` +
-    `<td class="center">${cell(work.se)}</td>` +
-    `<td class="remarks-cell">${cell(work.remarks)}</td>` +
-    `<td class="center">${cell(formatDate(work.targetDate))}</td>` +
-    `<td class="center">${cell(formatDate(work.tentativeIssuedDate))}</td>` +
-    `<td class="center">${cell(formatDate(work.detailedLastIssuedDate))}</td>` +
-    `<td class="center">${cell(formatDate(work.detailedCompleteIssuedDate))}</td>` +
-    '</tr>'
-  );
+function taskRow(cells) {
+  const cellClass = (column) => (column.remarks ? ' class="remarks-cell"' : column.align === 'center' ? ' class="center"' : '');
+  return `<tr>${cells.map((text, i) => `<td${cellClass(REPORT_COLUMNS[i])}>${escapeHtml(text)}</td>`).join('')}</tr>`;
 }
 
-function cell(value) {
+function cellText(value) {
   const trimmed = (value || '').trim();
-  return escapeHtml(trimmed === '' ? '-' : trimmed);
+  return trimmed === '' ? '-' : trimmed;
 }
 
 function formatDate(value) {
@@ -244,7 +281,7 @@ function formatDate(value) {
   return formatted === '' ? '-' : formatted;
 }
 
-function todayFormatted(now = new Date()) {
+export function todayFormatted(now = new Date()) {
   const dd = String(now.getDate()).padStart(2, '0');
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   return `${dd}-${mm}-${now.getFullYear()}`;
@@ -259,6 +296,6 @@ export function escapeHtml(text) {
 }
 
 /** File name for the browser's "Save as PDF" flow, matching the Android print job name. */
-export function reportFileName(designation, engineerName) {
-  return `${reportTitle(designation, engineerName).replace(/[\\/:*?"<>|]/g, '-')}`;
+export function reportFileName(designation, engineerName, date) {
+  return `${reportTitle(designation, engineerName, date).replace(/[\\/:*?"<>|]/g, '-')}`;
 }

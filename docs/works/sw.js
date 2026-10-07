@@ -7,7 +7,7 @@
 // Namespaced because the editable dashboard at /app/ shares this origin — and therefore this
 // cache storage. Each app must only ever reap its own generations.
 const CACHE_PREFIX = 'rdo-kkd-works-';
-const CACHE_NAME = `${CACHE_PREFIX}v7`;
+const CACHE_NAME = `${CACHE_PREFIX}v8`;
 
 const APP_SHELL = [
   './',
@@ -19,6 +19,10 @@ const APP_SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './js/main.js',
+  './js/bulkReports.js',
+  './js/excelImport.js',
+  './js/pdfDocument.js',
+  './js/vendor.js',
   './js/config.js',
   './js/model.js',
   './js/state.js',
@@ -28,6 +32,7 @@ const APP_SHELL = [
   './js/repository.js',
   './js/report.js',
   './js/viewmodel.js',
+  './js/ui/bulkScreen.js',
   './js/ui/chips.js',
   './js/ui/detailScreen.js',
   './js/ui/deviceLayout.js',
@@ -39,6 +44,7 @@ const APP_SHELL = [
   './js/ui/mainScreen.js',
   './js/ui/pdfExport.js',
   './js/ui/profileSheet.js',
+  './js/ui/saveFiles.js',
   './js/ui/pullToRefresh.js',
   './js/ui/setupScreen.js',
   './js/ui/sheet.js',
@@ -48,6 +54,8 @@ const APP_SHELL = [
   './js/ui/whatsNew.js',
   './js/ui/workCard.js',
 ];
+// The Excel screen's libraries (vendor/, ~750 KB) are left out: most visits never open that
+// screen, and the stale-while-revalidate handler below keeps them once it has been opened.
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

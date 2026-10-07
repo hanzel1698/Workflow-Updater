@@ -4,7 +4,7 @@ import { ALL_PROFILE_ID } from '../config.js';
 import { el } from './dom.js';
 import { openDialog } from './dialog.js';
 
-export function showExportPdfNameDialog({ designation, onConfirm }) {
+export function showExportPdfNameDialog({ designation, onConfirm, onBulk }) {
   const profileHint =
     designation === ALL_PROFILE_ID ? 'Report covers all RDO KKD engineers.' : `Profile: ${designation}`;
 
@@ -26,6 +26,19 @@ export function showExportPdfNameDialog({ designation, onConfirm }) {
     }),
     el('label', { className: 'text-field-label', text: "Engineer's name", attrs: { for: 'export-engineer-name' } }),
     input,
+    onBulk
+      ? el('button', {
+          className: 'link-btn export-bulk-link',
+          text: 'Reports for several engineers? Make them all from an Excel file',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              dialog.close();
+              onBulk();
+            },
+          },
+        })
+      : null,
   ]);
 
   let confirmButton;

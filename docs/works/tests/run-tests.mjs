@@ -6,6 +6,10 @@
  */
 
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+
+// SheetJS ships as a classic script for the browser; Node can `require` the same vendored copy.
+const XLSX = createRequire(import.meta.url)('../vendor/xlsx.mini.min.js');
 
 import { ALL_PROFILE, MOCK_ROWS, STATUS_OPTIONS, profileById } from '../js/config.js';
 import { SheetDateFormatter, StatusMapper, createWorkItem } from '../js/model.js';
@@ -19,7 +23,10 @@ import {
 } from '../js/state.js';
 import * as chipOrder from '../js/chipOrder.js';
 import { createRepository, filterRowsForProfile } from '../js/repository.js';
-import { REPORT_CSS, buildReportBody, buildReportHtml, reportTitle } from '../js/report.js';
+import { REPORT_COLUMNS, REPORT_CSS, buildReportBody, buildReportHtml, buildReportModel, reportTitle } from '../js/report.js';
+import { parseWorkbook, readWorkflowRows } from '../js/excelImport.js';
+import { bulkEngineers, bulkReport, pdfFileName, suggestedEngineerName, titleDateFromInput } from '../js/bulkReports.js';
+import { hasUnsupportedCharacters, pdfText } from '../js/pdfDocument.js';
 import { createWorksViewModel } from '../js/viewmodel.js';
 import { DESKTOP_MIN_WIDTH, applyDesktopLayout, isDesktopEnvironment } from '../js/ui/deviceLayout.js';
 
@@ -755,6 +762,114 @@ test('applyDesktopLayout stamps <html> and re-checks when the window is resized'
   assert.equal(root.dataset.device, 'compact', 'a narrowed window goes back to the phone layout');
 
   assert.equal(listeners.change.length, 1, 'pointer changes (docking a tablet) re-run the check');
+});
+
+/* ---------------- Excel import (js/excelImport.js) ---------------- */
+
+/** An .xlsx shaped like the Google Sheets download: title rows above the header, extra tabs. */
+function workbookBytes({ sheetName = 'WORKFLOW MONITORING SHEET', extraTabs = true } = {}) {
+  const header = ['e-Office File Number', 'Name of Work', 'District', 'LAC', 'Design Office', 'Design Status', 'ASE', 'Total area in m2', 'Tentative Issued Date', 'I/C (ASE)'];
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['RDO KKD workflow'],
+    [],
+    header,
+    ['F1', 'Rest house', '09 Palakkad', 'Tarur', 'RDO KKD', '06 Detailed Design Issued', 'AD', 1015, 45663, false],
+    ['F2', 'Library', '13 Kannur', 'Payyannur', 'RDO KKD', 'DDO', 'ASE02', '', '', ''],
+    ['', '', '', '', 'RDO KKD', '', 'AD', '', '', ''], // formatted but empty table row
+    ['F3', 'Hostel', '11 Kozhikode', 'Kozhikode North', 'RDO KKD', 'FNO', 'Not Assigned', '', '', ''],
+    ['F4', 'Court', '14 Kasargod', 'Kasaragod', 'RDO TVM', 'DDI', 'AD', '', '', ''],
+  ]);
+  // Column I holds a real date cell: serial 45663 is 06/01/2025.
+  ws.I4.z = 'dd/mm/yyyy';
+  const wb = XLSX.utils.book_new();
+  if (extraTabs) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Districts'], ['09 Palakkad']]), 'Dropdown Details');
+  if (extraTabs) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ['', 'Old work']]), 'OLD WORKFLOW MONITORING SHEET');
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+}
+
+test('the Excel copy yields the same rows the Apps Script serves', () => {
+  const { sheetName, headers, rows } = readWorkflowRows(XLSX, parseWorkbook(XLSX, workbookBytes()));
+  assert.equal(sheetName, 'WORKFLOW MONITORING SHEET');
+  assert.equal(headers[1], 'Name of Work');
+  assert.deepEqual(rows.map((row) => row['Name of Work']), ['Rest house', 'Library', 'Hostel', 'Court'], 'rows without a Name of Work are skipped');
+  assert.equal(rows[0]._rowNum, '4', 'the 1-based sheet row, header offset included');
+  assert.equal(rows[0]['Total area in m2'], '1015');
+  assert.equal(rows[0]['I/C (ASE)'], 'false', 'booleans stringify as Apps Script does');
+  assert.equal(rows[0]['Tentative Issued Date'], '06/01/2025', 'a date cell is read from its day number, with no timezone slip');
+  assert.equal(SheetDateFormatter.format(rows[0]['Tentative Issued Date']), '06/01/2025');
+});
+
+test('a renamed workflow tab is still found, and archived OLD tabs are skipped', () => {
+  const { sheetName, rows } = readWorkflowRows(XLSX, parseWorkbook(XLSX, workbookBytes({ sheetName: 'Sheet1' })));
+  assert.equal(sheetName, 'Sheet1');
+  assert.equal(rows.length, 4);
+});
+
+test('a workbook with no workflow tab says so', () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Something else']]), 'Notes');
+  const bytes = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+  assert.throws(() => readWorkflowRows(XLSX, parseWorkbook(XLSX, bytes)), /Name of Work/);
+});
+
+/* ---------------- Bulk reports (js/bulkReports.js) ---------------- */
+
+test('bulk lists the roster, All, then ASE values the file has that the roster lacks', () => {
+  const { rows } = readWorkflowRows(XLSX, parseWorkbook(XLSX, workbookBytes()));
+  const lines = bulkEngineers(rows);
+  assert.deepEqual(
+    lines.map((line) => line.profile.id),
+    ['AD', 'ASE01', 'ASE02', 'ASE03', 'AHE01', 'AHE02', 'ALL', 'Not Assigned'],
+  );
+  const count = (id) => lines.find((line) => line.profile.id === id).workCount;
+  assert.equal(count('AD'), 1, 'RDO TVM works are not RDO KKD works');
+  assert.equal(count('ASE02'), 1);
+  assert.equal(count('ALL'), 2, 'All covers the roster, not unassigned works');
+  assert.equal(count('Not Assigned'), 1);
+});
+
+test('bulk report: title date, works and file name for one engineer', () => {
+  const { rows } = readWorkflowRows(XLSX, parseWorkbook(XLSX, workbookBytes()));
+  const report = bulkReport(rows, { profile: profileById('ASE02'), engineerName: 'A. N. Other' }, '07-10-2026');
+  assert.equal(report.model.title, 'PROGRESS REPORT - ASE02 - A. N. Other - AS ON 07-10-2026.');
+  assert.equal(report.works.length, 1);
+  assert.equal(report.fileName, 'PROGRESS REPORT - ASE02 - A. N. Other - AS ON 07-10-2026.pdf');
+  assert.equal(pdfFileName('AD', 'X/Y', '01-01-2026'), 'PROGRESS REPORT - AD - X-Y - AS ON 01-01-2026.pdf');
+});
+
+test('bulk suggests the roster name and converts the date input', () => {
+  assert.equal(suggestedEngineerName(profileById('AD')), 'Hanzel H. Fernandez');
+  assert.equal(suggestedEngineerName(profileById('ASE01')), '', 'an id-only roster entry has no name to offer');
+  assert.equal(titleDateFromInput('2026-10-07'), '07-10-2026');
+  assert.equal(titleDateFromInput(''), null);
+});
+
+/* ---------------- Report model and PDF text ---------------- */
+
+test('the report model and the print view agree on every cell', () => {
+  const model = buildReportModel(works(), profileById('AD'), 'Hanzel H. Fernandez', { date: '01-01-2026' });
+  assert.equal(REPORT_COLUMNS.length, 14);
+  assert.equal(model.groups.length, STATUS_OPTIONS.length);
+  const body = buildReportBody(works(), profileById('AD'), 'Hanzel H. Fernandez', { date: '01-01-2026' });
+  assert.ok(body.includes('AS ON 01-01-2026.'));
+  for (const group of model.groups) {
+    assert.ok(body.includes(group.heading));
+    for (const cells of group.rows) {
+      assert.equal(cells.length, 14);
+      assert.ok(body.includes(cells[0]));
+    }
+  }
+});
+
+test('PDF text folds typographic punctuation and flags what Helvetica cannot draw', () => {
+  assert.equal(pdfText('Area\u00a0m\u00b2 \u2013 \u201cDD\u201d issued\u2026'), 'Area m\u00b2 - "DD" issued...');
+  assert.equal(pdfText('\u0d15\u0d4b'), '??');
+  const model = buildReportModel(works(), profileById('AD'), 'Hanzel H. Fernandez');
+  assert.equal(hasUnsupportedCharacters(model), false);
+  model.groups[3].rows[0][9] = 'remark \u0d15';
+  assert.equal(hasUnsupportedCharacters(model), true);
+  assert.equal(hasUnsupportedCharacters(model), true, 'the check holds no state between calls');
 });
 
 /* ---------------- Runner ---------------- */
