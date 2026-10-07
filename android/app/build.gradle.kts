@@ -52,13 +52,8 @@ android {
         applicationId = "in.rdokk.workflowupdater"
         minSdk = 24
         targetSdk = 36
-<<<<<<< Updated upstream
         versionCode = 8
         versionName = "3.0.0"
-=======
-        versionCode = 4
-        versionName = "2.1.1"
->>>>>>> Stashed changes
     }
 
     signingConfigs {
@@ -76,18 +71,9 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-<<<<<<< Updated upstream
             if (uploadSigning != null) {
                 signingConfig = signingConfigs.getByName("upload")
-=======
-            if (uploadSigning == null) {
-                throw GradleException(
-                    "Release signing is not configured. Run scripts/ensure-android-signing.ps1 " +
-                        "or set KEYSTORE_FILE / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD.",
-                )
->>>>>>> Stashed changes
             }
-            signingConfig = signingConfigs.getByName("upload")
         }
     }
     compileOptions {
