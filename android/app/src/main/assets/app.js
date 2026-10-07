@@ -1317,6 +1317,11 @@ function getCurrentDateFormatted() {
   return `${dd}-${mm}-${yyyy}`;
 }
 
+function buildProgressReportFileName(designation, engineerName) {
+  const date = getCurrentDateFormatted();
+  return `PR-BUILDINGS - ${designation.toString().trim().toUpperCase()} - ${engineerName.toString().trim()} - as on ${date}`.replace(/[\\/:*?"<>|]/g, '-');
+}
+
 function buildProgressReportTitle(designation, engineerName) {
   const date = getCurrentDateFormatted();
   return `PROGRESS REPORT - ${designation.toString().trim().toUpperCase()} - ${engineerName.toString().trim()} - AS ON ${date}.`;
@@ -1547,7 +1552,7 @@ function downloadPdfReport(engineerName) {
     <html>
     <head>
       <meta charset="utf-8">
-      <title>${escapeHtml(title)}</title>
+      <title>${escapeHtml(buildProgressReportFileName(activeProfile.id, engineerName))}</title>
       <style>
         body {
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

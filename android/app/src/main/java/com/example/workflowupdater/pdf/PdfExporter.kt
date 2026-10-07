@@ -64,6 +64,6 @@ class PdfExporter(private val context: Context) {
 
   companion object {
     fun jobName(designation: String, engineerName: String): String =
-      PdfReportBuilder.reportTitle(designation, engineerName)
+      PdfReportBuilder.reportFileName(designation, engineerName)
   }
 }

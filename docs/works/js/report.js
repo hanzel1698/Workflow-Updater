@@ -297,5 +297,5 @@ export function escapeHtml(text) {
 
 /** File name for the browser's "Save as PDF" flow, matching the Android print job name. */
 export function reportFileName(designation, engineerName, date) {
-  return `${reportTitle(designation, engineerName, date).replace(/[\\/:*?"<>|]/g, '-')}`;
+  return `PR-BUILDINGS - ${designation.trim().toUpperCase()} - ${engineerName.trim()} - as on ${date ?? todayFormatted()}`.replace(/[\\/:*?"<>|]/g, '-');
 }

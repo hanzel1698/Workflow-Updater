@@ -25,6 +25,10 @@ object PdfReportBuilder {
   fun reportTitle(designation: String, engineerName: String, date: String = todayFormatted()): String =
     "PROGRESS REPORT - ${designation.trim().uppercase(Locale.ROOT)} - ${engineerName.trim()} - AS ON $date."
 
+  fun reportFileName(designation: String, engineerName: String, date: String = todayFormatted()): String =
+    "PR-BUILDINGS - ${designation.trim().uppercase(Locale.ROOT)} - ${engineerName.trim()} - as on $date"
+      .replace(Regex("[\\\\/:*?\"<>|]"), "-")
+
   fun buildReportHtml(works: List<WorkItem>, profile: EngineerProfile, engineerName: String): String {
     val title = reportTitle(profile.id, engineerName)
     val grouped = SheetConfig.STATUS_OPTIONS.associateWith { status -> works.filter { it.status == status } }

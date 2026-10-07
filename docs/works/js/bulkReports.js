@@ -69,9 +69,9 @@ export function bulkReport(rows, { profile, engineerName }, date) {
   };
 }
 
-/** "PROGRESS REPORT - AD - Name - AS ON 07-10-2026.pdf" — the title, without its closing full stop. */
+/** "PR-BUILDINGS - AD - Name - as on 07-10-2026.pdf". */
 export function pdfFileName(designation, engineerName, date) {
-  return `${reportFileName(designation, engineerName, date).replace(/\.+$/, '').trim()}.pdf`;
+  return `${reportFileName(designation, engineerName, date).trim()}.pdf`;
 }
 
 /** `YYYY-MM-DD` (a date input's value) → `DD-MM-YYYY` (the report title's format). */

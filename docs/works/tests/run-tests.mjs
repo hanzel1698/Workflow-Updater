@@ -834,8 +834,8 @@ test('bulk report: title date, works and file name for one engineer', () => {
   const report = bulkReport(rows, { profile: profileById('ASE02'), engineerName: 'A. N. Other' }, '07-10-2026');
   assert.equal(report.model.title, 'PROGRESS REPORT - ASE02 - A. N. Other - AS ON 07-10-2026.');
   assert.equal(report.works.length, 1);
-  assert.equal(report.fileName, 'PROGRESS REPORT - ASE02 - A. N. Other - AS ON 07-10-2026.pdf');
-  assert.equal(pdfFileName('AD', 'X/Y', '01-01-2026'), 'PROGRESS REPORT - AD - X-Y - AS ON 01-01-2026.pdf');
+  assert.equal(report.fileName, 'PR-BUILDINGS - ASE02 - A. N. Other - as on 07-10-2026.pdf');
+  assert.equal(pdfFileName('AD', 'X/Y', '01-01-2026'), 'PR-BUILDINGS - AD - X-Y - as on 01-01-2026.pdf');
 });
 
 test('bulk suggests the roster name and converts the date input', () => {
