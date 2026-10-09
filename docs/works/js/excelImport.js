@@ -4,7 +4,7 @@
  * profile filtering, status mapping, the report — runs unchanged on a file instead of a network
  * read that can take a minute and a half.
  *
- * Mirrors doGet in windows/google_apps_script.js: the tab is found by name, else by scanning for
+ * Mirrors buildPayload_ in apps-script/Code.js: the tab is found by name, else by scanning for
  * the header row; the header row is the first one carrying "e-Office File Number" or "Name of
  * Work"; a data row counts only when Name of Work is filled.
  *

@@ -4,10 +4,10 @@
  * snapshot written by js/cache.js, so a stale sheet response is never served from here.
  */
 
-// Namespaced because the editable dashboard at /app/ shares this origin — and therefore this
-// cache storage. Each app must only ever reap its own generations.
+// Namespaced because everything on this origin shares one cache storage, including what is left
+// of the retired dashboard at /app/. Each app must only ever reap its own generations.
 const CACHE_PREFIX = 'rdo-kkd-works-';
-const CACHE_NAME = `${CACHE_PREFIX}v8`;
+const CACHE_NAME = `${CACHE_PREFIX}v9`;
 
 const APP_SHELL = [
   './',

@@ -21,7 +21,7 @@ const isBlank = (value) => !value || value.trim() === '';
 
 /**
  * Maps a raw category code (e.g. "TDO") or free-text status to one of the nine canonical
- * design-status strings. Ported from `mapCategoryToStatus` in windows/app.js.
+ * design-status strings.
  */
 export const StatusMapper = {
   mapCategoryToStatus(category, remarks, presentStatus) {

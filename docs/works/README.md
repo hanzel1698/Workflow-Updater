@@ -1,13 +1,12 @@
 # RDO KKD Works — read-only web app
 
-A read-only browser build of the Android app (`android/`), feature-for-feature. Same Google Sheet,
-same Apps Script endpoint, same engineer roster, same design-status rules and the same A3 PDF report.
+Looks up the RDO KKD works in the office Google Sheet, on a phone or a PC, and exports each
+engineer's A3 PDF report. It reads the sheet through the Apps Script Web App in
+[`apps-script/Code.js`](../../apps-script/Code.js) and never writes to it. It began as a browser
+build of the Android app, which has since been retired.
 
 Static HTML/CSS/ES modules — no build step, no dependencies, no bundler. This folder *is* the
 published app; there is no sync script and no second copy.
-
-Not to be confused with `docs/app/`, the browser build of the **editable** `windows/` dashboard.
-That one is for changing works at a desk; this one is for looking them up on a phone.
 
 ## Run it
 
@@ -34,7 +33,7 @@ GitHub Pages serves `docs/` from `master`, so a merge publishes this folder as-i
 | URL | Source |
 |---|---|
 | `https://hanzel1698.github.io/Workflow-Updater/` | `docs/index.html` — the privacy policy URL registered with Google Play |
-| `https://hanzel1698.github.io/Workflow-Updater/app/` | `docs/app/` — the editable dashboard |
+| `https://hanzel1698.github.io/Workflow-Updater/app/` | `docs/app/` — redirects here; the retired editable dashboard used to live there |
 | `https://hanzel1698.github.io/Workflow-Updater/works/` | this folder |
 
 Every asset path here is relative, so the app runs from the `/works/` subdirectory with no
@@ -42,36 +41,47 @@ base-path rewriting: service worker scope, manifest `start_url` and icons all re
 
 It is marked `noindex` because the sheet it reads is office-internal: the URL works for anyone who
 has it, but it stays out of search results. Nothing server-side is required — the browser talks to
-the Apps Script Web App directly, exactly as the phone does. Any other static host (Netlify, an
-office intranet share) works the same way.
+the Apps Script Web App directly. Any other static host (Netlify, an office intranet share) works
+the same way.
 
-## Feature parity with the Android app
+## Features
 
-| Android | Web | Notes |
-|---|---|---|
-| One-time **What's New** screen per release | ✅ | Reads `release_notes.json` (same shape as the app's asset); shown once per `versionCode` |
-| One-time **default profile** setup gate | ✅ | Choice persists in `localStorage` and is reused on every later visit |
-| Works list with status badge, location, floors/area, AS/AR/SR pills, remarks | ✅ | |
-| Live search over work name, file number, LAC and design-unit remarks | ✅ | |
-| Design-status KPI chips with counts, tap to filter, "All works" pinned first | ✅ | Only statuses present in the current pool are shown |
-| **Reorder status chips**, persisted | ✅ | Press-and-drag (long-press on touch); `Alt`+`←`/`→` also works with a keyboard |
-| Filter sheet: District, LAC, SE, AS/AR/SR status, with cascading options | ✅ | Same "clear all" / "apply" behaviour and active-filter badge |
-| Filter result chip ("N of M works match your filters") | ✅ | |
-| Clear-all-filters button | ✅ | |
-| Engineer profile switcher, set-default star, active check | ✅ | |
-| Read-only work detail: Overview, Approvals, Building, Timeline, Remarks, Additional Information | ✅ | Unknown sheet columns still surface under Additional Information |
-| Sheet dates shown as `DD/MM/YYYY` in Asia/Kolkata | ✅ | ISO instants are converted before the date is read, so the day never slips |
-| Export grouped **A3 landscape PDF** report, named after the engineer | ✅ | The report is rendered into the page behind a print stylesheet, then `window.print()` → "Save as PDF" (Android uses `PrintManager`). Not an iframe: a 0×0 iframe is never laid out and prints blank |
-| Offline: last synced sheet is reopened without network | ✅ | Snapshot in `localStorage`; app shell cached by a service worker |
-| Offline banner with last-synced time | ✅ | |
-| Pull to refresh | ✅ | Plus a refresh button in the top bar, since desktop browsers have no pull gesture |
-| Sample data when there is no network and no cache | ✅ | |
-| Installable to the home screen | ✅ | Web app manifest + icons; Android ships as an APK |
-| — | ➕ | **Desktop layout**: on a PC the app drops the phone column and uses the whole window (see below). The Android app has no equivalent |
-| — | ➕ | **PDFs from Excel**: every engineer's report in one go from a downloaded copy of the sheet, with no Apps Script read (see below). Web only |
+| Feature | Notes |
+|---|---|
+| One-time **What's New** screen per release | Reads `release_notes.json`; shown once per `versionCode` |
+| One-time **default profile** setup gate | Choice persists in `localStorage` and is reused on every later visit |
+| Works list with status badge, location, floors/area, AS/AR/SR pills, remarks | |
+| Live search over work name, file number, LAC and design-unit remarks | |
+| Design-status KPI chips with counts, tap to filter, "All works" pinned first | Only statuses present in the current pool are shown |
+| **Reorder status chips**, persisted | Press-and-drag (long-press on touch); `Alt`+`←`/`→` also works with a keyboard |
+| Filter sheet: District, LAC, SE, AS/AR/SR status, with cascading options | Same "clear all" / "apply" behaviour and active-filter badge |
+| Filter result chip ("N of M works match your filters") | |
+| Clear-all-filters button | |
+| Engineer profile switcher, set-default star, active check | |
+| Read-only work detail: Overview, Approvals, Building, Timeline, Remarks, Additional Information | Unknown sheet columns still surface under Additional Information |
+| Sheet dates shown as `DD/MM/YYYY` in Asia/Kolkata | ISO instants are converted before the date is read, so the day never slips |
+| Export grouped **A3 landscape PDF** report, named after the engineer | The report is rendered into the page behind a print stylesheet, then `window.print()` → "Save as PDF". Not an iframe: a 0×0 iframe is never laid out and prints blank |
+| Opens instantly, and offline, from the last synced sheet | Snapshot in `localStorage`, shown first while a fresh copy loads behind it; app shell cached by a service worker |
+| Offline banner with last-synced time | |
+| Pull to refresh, or the refresh button in the top bar | Asks the Web App to re-read the sheet if it was edited since its saved copy (see [Where the data comes from](#where-the-data-comes-from)) |
+| Sample data when there is no network and no cache | |
+| Installable to the home screen | Web app manifest + icons |
+| **Desktop layout** | On a PC the app drops the phone column and uses the whole window (see below) |
+| **PDFs from Excel** | Every engineer's report in one go from a downloaded copy of the sheet, with no Apps Script read (see below) |
 
-The web app is read-only, like the Android app: no add, edit or delete. For editing, use the
-desktop dashboard in `windows/`.
+The app is read-only: no add, edit or delete. Changes are made in the Google Sheet itself.
+
+## Where the data comes from
+
+Reading the sheet takes Apps Script 15–80 s, so the Web App keeps a saved copy instead and
+answers from that in a few seconds. Every 15 minutes it checks whether the sheet was edited and,
+if so, reads it again, so the copy is at most ~15 minutes old.
+
+A refresh (the button, or pull-to-refresh) sends `refresh=1`, which makes the Web App check the
+sheet straight away. If it hasn't been edited, the refresh returns as fast as any other load. If
+it has, that refresh waits for the full read before the list updates, so a fresh edit is in the
+report you export next. A refresh never settles for a plain read already in flight
+(`js/repository.js`).
 
 ## Opened on a desktop PC
 
@@ -106,9 +116,8 @@ switches layouts live. What the desktop layout does with the extra room:
 
 ## PDFs from Excel
 
-Reading the sheet through Apps Script can take a minute and a half. The **PDFs from Excel**
-screen (`#/bulk`) skips it: download the sheet from Google Sheets (**File → Download → Microsoft
-Excel**), pick the file, type a name for each engineer, and save one A3 report per engineer in a
+The **PDFs from Excel** screen (`#/bulk`) skips Apps Script altogether: download the sheet from
+Google Sheets (**File → Download → Microsoft Excel**), pick the file, type a name for each engineer, and save one A3 report per engineer in a
 single step. The reports show the sheet exactly as it was downloaded, so they can be newer than
 what the list on screen shows.
 
@@ -116,7 +125,7 @@ It is reached from the app bar's upload button on a wide screen, from the **Expo
 and from the "Taking a while?" link while the sheet is still loading. A direct link to
 `/works/#/bulk` opens it without waiting for anything.
 
-- **Reading the file** (`js/excelImport.js`) mirrors `doGet` in `windows/google_apps_script.js`:
+- **Reading the file** (`js/excelImport.js`) mirrors `buildPayload_` in `apps-script/Code.js`:
   the `WORKFLOW MONITORING SHEET` tab (else the first non-`OLD` tab with a header row), the
   header row found by `Name of Work` / `e-Office File Number`, and only rows with a Name of Work.
   Date cells are read from Excel's day number, so no timezone can shift the day. Against the live
@@ -143,10 +152,10 @@ and from the "Taking a while?" link while the sheet is still loading. A direct l
 
 | Path | Purpose |
 |---|---|
-| `index.html`, `styles.css` | App shell, and the violet theme shared with the dashboard — one accent, five status tones applied through `data-tone`, one radius scale |
+| `index.html`, `styles.css` | App shell, and the violet theme — one accent, five status tones applied through `data-tone`, one radius scale |
 | `js/config.js` | Sheet URL, spreadsheet id, engineer roster, statuses, column aliases, sample rows |
 | `js/model.js` | Row normalization, design-status mapping, `DD/MM/YYYY` date formatting |
-| `js/repository.js` | Apps Script fetch → profile filtering → cache/sample fallbacks |
+| `js/repository.js` | Apps Script fetch (with `refresh=1` on a forced refresh) → profile filtering → cache/sample fallbacks |
 | `js/cache.js`, `js/prefs.js` | `localStorage` snapshot and persisted preferences |
 | `js/state.js`, `js/chipOrder.js` | Derived state (filters, options, counts) and chip ordering |
 | `js/viewmodel.js` | Screen state and the actions that change it |
@@ -156,11 +165,12 @@ and from the "Taking a while?" link while the sheet is still loading. A direct l
 | `js/vendor.js`, `vendor/` | On-demand loader and the SheetJS / jsPDF / AutoTable / JSZip builds it loads |
 | `js/ui/` | Screens, sheets, dialogs, chips, cards |
 | `js/ui/deviceLayout.js` | Desktop-PC detection; stamps `data-device` on `<html>` for the desktop layout |
-| `js/ui/theme.js` | The app bar's dark/light button; the stored choice is shared with `/app/` |
+| `js/ui/theme.js` | The app bar's dark/light button |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Offline app shell and installability |
-| `tests/run-tests.mjs` | Logic tests mirroring the Android unit tests |
+| `tests/run-tests.mjs` | Logic tests |
 
-Each module names the Kotlin file it was ported from, so the two clients can be kept in step.
+Most modules still name the Kotlin file they were ported from. The Android app is gone, but
+those files are in the git history.
 
 ## Tests
 
@@ -170,12 +180,12 @@ node docs/works/tests/run-tests.mjs
 
 No dependencies. Covers status mapping, date formatting, profile filtering, derived state and
 cascading filter options, chip ordering, repository fallbacks, view-model actions, desktop-PC
-detection, the PDF report, and the Excel import and bulk reports — the same ground as `android/app/src/test/`.
+detection, the PDF report, and the Excel import and bulk reports.
 
-## Keeping it in sync with the app
+## Making a change
 
-When the sheet, roster or status rules change, update `android/.../data/SheetConfig.kt`,
-`docs/works/js/config.js` and `windows/config.js` together. When shipping a release, update
-`docs/works/release_notes.json` alongside `android/whats_new.md`, keeping `versionCode` equal to
-`APP_VERSION_CODE` in `docs/works/js/config.js` (the What's New screen only shows notes that match
-the build it ships with).
+When the sheet, roster or status rules change, update `js/config.js`. If the sheet's layout
+changes (tab name, header row), update `apps-script/Code.js` and `js/excelImport.js` together, as
+they read it the same way. To announce a release with the What's New screen, write the notes in
+`release_notes.json` and set its `versionCode` and `APP_VERSION_CODE` in `js/config.js` to the
+same new number: the screen only shows notes that match the build it ships with.

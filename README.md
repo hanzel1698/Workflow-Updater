@@ -1,218 +1,92 @@
 # Workflow Updater
 
-Custom dashboard frontend for the RDO KKD Google Sheets workflow tracker.
+A read-only web app for the RDO KKD Google Sheets workflow tracker: look works up on a phone or a
+PC, filter them, and export each engineer's A3 PDF report. It never writes to the sheet. Changes
+are made in the Google Sheet itself.
+
+**Live:** <https://hanzel1698.github.io/Workflow-Updater/works/>
 
 ## Project layout
 
-| Folder | Purpose |
-|--------|---------|
-| `windows/` | Desktop dashboard (HTML/CSS/JS) with editing, Python local server, and EXE build scripts |
-| `android/` | Native Android app (Jetpack Compose) for viewing works on mobile |
-| `docs/` | GitHub Pages site — privacy policy at the root, plus both web apps (`docs/app/`, `docs/works/`) |
-| `scripts/` | Shared maintenance scripts |
+| Path | Purpose |
+|------|---------|
+| `docs/works/` | The web app. See [`docs/works/README.md`](docs/works/README.md) |
+| `apps-script/Code.js` | The Google Apps Script Web App that serves the sheet to the app |
+| `docs/` | GitHub Pages site: the privacy policy at the root, the app at `/works/` |
+| `docs/app/` | A redirect left where the retired editable dashboard used to be (see [Retired](#retired)) |
+| `scripts/` | `generate-works-icons.py` for the app, plus Play release tooling for the other Android repos |
 
-The **canonical source** for the editable dashboard lives in `windows/`. After editing those files,
-sync the copies:
+## How the data loads
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\sync-android-assets.ps1   # Android assets
-python3 scripts/sync-web-assets.py                                           # docs/app web app
-```
+Reading the sheet takes Apps Script 15–80 s, so the app doesn't wait on that read every time it opens:
 
-## Two web apps
+- **In the background**, every 15 minutes, the Apps Script checks whether the sheet has been edited.
+  If it has, it reads the sheet once and saves the result as a JSON file in the Drive of the account
+  that deployed the script (ad.rdokkd@gmail.com).
+- **Opening the app** fetches that saved copy, which takes a few seconds and is at most ~15 minutes old.
+  The app also shows its own last copy straight away, so it opens instantly and works offline.
+- **The refresh button** (or pull-to-refresh) asks the script to look at the sheet now. If nothing
+  has been edited since the saved copy, the answer is just as quick. If it has, that one refresh
+  waits for a full read (15–80 s, as before), and everyone who opens the app afterwards gets the new copy
+  instantly. Use it after editing the sheet when you need a report straight away.
+- **PDFs from Excel** (`/works/#/bulk`) skips the script entirely: download the sheet as `.xlsx`
+  and build every engineer's report from the file.
 
-The Pages site hosts both, for two different jobs:
+## Web app
 
-| URL | What it is | Source |
-|-----|------------|--------|
-| [`/app/`](https://hanzel1698.github.io/Workflow-Updater/app/) | **Editable dashboard** — the full `windows/` workspace in the browser: add and edit works, calendar, analytics, Excel export. On a desktop PC it uses the whole window rather than a 1440px column | Synced from `windows/` |
-| [`/works/`](https://hanzel1698.github.io/Workflow-Updater/works/) | **Read-only works viewer** — the Android app's feature set, built for a phone in the field: search, status chips, filters, A3 PDF report. Opened on a desktop PC it uses the whole window instead of a phone column | `docs/works/` |
+`docs/works/` is plain HTML, CSS and ES modules: no build step and no dependencies. GitHub Pages
+publishes `docs/` on every push to `master` (`.github/workflows/deploy-pages.yml`).
 
-Both read the same Google Sheet through the same Apps Script Web App, and both work offline once
-loaded. When that read is slow, `/works/#/bulk` (**PDFs from Excel**) builds every engineer's A3
-report in one go from a downloaded `.xlsx` of the sheet instead — see
-[`docs/works/README.md`](docs/works/README.md#pdfs-from-excel). Use `/app/` at a desk when you need to change something; use `/works/` on a phone when you
-only need to look something up.
-
-`/works/` and `android/` are read-only viewers that share the same engineer roster, design-status
-rules and PDF report — when those change, update `windows/config.js`, `docs/works/js/config.js` and
-`android/.../data/SheetConfig.kt` together.
-
-## Editable web app (no server)
-
-`docs/app/` is the same dashboard built to run entirely in the browser — no Python, no Node, no
-backend. It calls the Google Apps Script Web App directly, so publishing it is nothing more than
-serving static files.
-
-**Live URL** once GitHub Pages is enabled:
-
-```
-https://<your-github-user>.github.io/Workflow-Updater/app/
-```
-
-Enable it once under **Settings → Pages → Build and deployment → Deploy from a branch →
-`master` + `/docs`**. The privacy policy keeps the site root; the dashboard is served from `/app/`.
-Open that URL on a phone or PC and the dashboard is simply there — no launcher, no local server.
-
-What the web build adds on top of `windows/`:
-
-- **Installable** — the header's *Install App* button (or the browser's own install control) puts it
-  on the home screen / Start menu and launches it without browser chrome. On iPhone/iPad, Safari
-  has no install button: use **Share → Add to Home Screen**.
-- **Works offline** — a service worker caches the app shell, and the last sheet payload is kept in
-  the browser. Launching offline shows that data with a pill saying when it was saved. Writing back
-  to the sheet still needs a connection.
-- **Settings in the UI** — the Apps Script URL, Sheet ID and tab name are editable from the
-  *Settings* button and stored in that browser only, so each engineer can point the app at their own
-  deployment without editing `config.js`.
-- **Fast start** — the Google Fonts import is taken off the render-blocking path, so a slow or
-  missing network no longer delays the dashboard by several seconds.
-
-URL options: `?demo=1` loads the bundled sample data (handy for showing the app without the sheet),
-`?profile=ASE01` opens a specific engineer profile.
-
-### Desktop screen real estate
-
-The dashboard defaults to a 1440px column centred in the window, which leaves a 4K monitor more
-than half empty. A gate at the top of `windows/app.js` works out whether it is running on a desktop
-PC and, if so, stamps `data-device="desktop"` on `<html>`; `windows/style.css` opens the layout out
-from there. Because it lives in `windows/`, both the local dashboard and `/app/` get it.
-
-A desktop PC means **a mouse-driven machine with a window at least 900px wide** — not just a big
-screen. `navigator.userAgentData.mobile` vetoes outright, and `(hover: hover) and (pointer: fine)`
-is the deciding test, which keeps tablets in landscape (iPadOS included, where Safari sends a Mac
-user-agent string) on the normal layout. It is re-checked on resize and when the pointer changes.
-
-What the extra room buys:
-
-- **The dashboard spans the window** — the KPI chips, filters, calendar and analytics panels all
-  widen with it, and the side gutter grows with the viewport instead of stopping at 1440px.
-- **More works per screen** — the card grid grows a column for every ~380px of window, so 1440px
-  shows three across and 1920px shows four.
-- **A roomier edit sheet** above 1700px, where the form and its timeline both have space.
-
-Nothing changes on a phone, a tablet, or a narrowed window — the rules are additive and keyed to
-`data-device="desktop"`.
-
-### Design system
-
-The dashboard and the read-only works viewer share one visual language, so the two web apps read as
-one product: the same violet accent, the same five semantic status tones, the same radius scale and
-the same flat, quiet surfaces. `windows/style.css` holds the dashboard's tokens (with legacy
-`--color-*` aliases kept for `docs/app/web-boot.js`); `docs/works/styles.css` holds the viewer's.
-
-Status colour is defined once and applied through `data-tone`, so a badge, a KPI chip, a group
-header, a calendar deadline and a chart bar for the same design status are always the same colour.
-The mapping lives in three places that must stay in step:
-
-| Surface | File |
-|---------|------|
-| Dashboard | `statusTone()` in `windows/app.js` |
-| Works viewer | `docs/works/js/ui/statusTone.js` |
-| Android | `android/.../ui/common/StatusColors.kt` |
-
-Both themes are real in both apps: each defaults to the operating system's preference, and a
-sun/moon button overrides it. The choice is stored under `wu.theme` — and because the two apps are
-served from the same origin, choosing light in one chooses it in the other. Each applies a stored
-theme before its first paint, so there is no flash of the wrong one: the dashboard from a gate at
-the top of `windows/app.js`, the viewer from a short inline script in `docs/works/index.html`
-(ES modules are deferred, so the button's own module in `docs/works/js/ui/theme.js` would be too
-late to beat the paint).
-
-### Rebuilding the web app
-
-`windows/` stays the canonical source. After editing it, re-run:
+Run it locally by double-clicking `docs\works\Launch Web App.bat`, or:
 
 ```bash
-python3 scripts/sync-web-assets.py        # Windows: py scripts\sync-web-assets.py
-```
-
-That copies `index.html`, `app.js`, `config.js` and `style.css` into `docs/app/`, injects the PWA
-tags, and re-stamps the service worker so returning visitors pick up the change. The
-**Web App In Sync** workflow fails the build if `docs/app/` is stale.
-
-Icons are generated and only need rebuilding if the artwork changes:
-
-```bash
-python3 scripts/generate-web-icons.py
-```
-
-Files owned by the web build and never overwritten by the sync: `web-boot.js` (settings, offline
-cache, install prompt), `sw.js`, `manifest.webmanifest`, `icons/`.
-
-## Read-only works viewer
-
-`docs/works/` is a browser build of the **Android** app rather than the desktop dashboard: the same
-works list, search, design-status chips, filters, engineer profiles, detail view and A3 PDF report,
-and no editing at all. It is mobile-first, installs to a home screen, and opens offline from the
-last synced sheet.
-
-It also knows when it has been opened on a desktop PC — a mouse-driven machine with a window at
-least 900px wide, so tablets and half-screen windows are not mistaken for one — and then drops the
-phone column for the full window: a works grid that grows a column per ~340px, and a detail view
-that fits on one screen. See [`docs/works/README.md`](docs/works/README.md#opened-on-a-desktop-pc).
-
-It has no build step and no sync script — the folder is the app, published straight from `docs/`.
-To run it locally, double-click `docs\works\Launch Web App.bat` (or
-`powershell -ExecutionPolicy Bypass -File .\docs\works\start_server.ps1`), which serves `docs/`
-at <http://localhost:8080/works/> so local paths match the live site.
-
-```bash
-node docs/works/tests/run-tests.mjs        # logic tests, no dependencies
-python3 scripts/generate-works-icons.py    # only if the icon artwork changes
-```
-
-See [`docs/works/README.md`](docs/works/README.md) for the full feature-parity table against the
-Android app.
-
-## Windows app
-
-**Quick start:** double-click `Launch Dashboard.bat` at the repo root (or `windows\Launch Dashboard.bat`).
-This starts a local Python/Node server because browsers block live sheet access from `file://`. To
-skip that entirely, use the hosted [web apps](#two-web-apps) instead.
-
-**Standalone EXE:**
-
-```powershell
-cd windows
-powershell -ExecutionPolicy Bypass -File .\build_exe.ps1
-```
-
-## Android app
-
-**Sync assets and build release APK:**
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-android-release.ps1
-```
-
-Release APK output: `android/app/build/outputs/apk/release/app-release.apk`
-
-On the first launch after installing a release APK, users see a one-time **What's New** screen. Release builds embed `app/src/main/assets/release_notes.json`, generated by `scripts/generate-android-release-notes.py` (also run automatically in CI before `assembleRelease`).
-
-**How What's New content is chosen**
-
-1. **Preferred:** edit `android/whats_new.md` with short end-user bullets before shipping. That file is the source of truth for the screen.
-2. **Fallback:** if that file is empty/missing, the script scans recent git commits and keeps only user-facing changes (`feat` / `fix` / `perf`, or commits that touch app code). Pure CI/workflow/docs/signing/script changes are skipped.
-
-Write notes the user would care about (new capability, visible fix). Do not list GitHub Actions, Gradle, keystore, or other engineering chores.
-
-Signing uses `android/keystore.properties` and a local keystore (not committed). Generate once:
-
-```powershell
-cd android
-keytool -genkeypair -v -keystore workflow-updater-release.keystore -alias workflowupdater -keyalg RSA -keysize 2048 -validity 10000
-```
-
-Then create `android/keystore.properties`:
-
-```properties
-storeFile=workflow-updater-release.keystore
-storePassword=YOUR_STORE_PASSWORD
-keyAlias=workflowupdater
-keyPassword=YOUR_KEY_PASSWORD
+python3 -m http.server 8080 --directory docs   # then open http://localhost:8080/works/
+node docs/works/tests/run-tests.mjs            # logic tests, no dependencies
 ```
 
 ## Google Apps Script
 
-Deploy `windows/google_apps_script.js` as a Web App from your Google Sheet and set the URL in `windows/config.js`.
+`apps-script/Code.js` is a standalone Apps Script project owned by ad.rdokkd@gmail.com, which has
+access to the office sheet. The script reads the sheet as that account, so the sheet never needs
+to be shared any further.
+
+**To deploy a change** (the steps are also at the top of the file):
+
+1. At [script.google.com](https://script.google.com), sign in as ad.rdokkd@gmail.com and open the
+   project. Replace the contents of `Code.gs` with `apps-script/Code.js`.
+2. Pick **setup** in the function menu and click **Run**, then approve the permissions it asks
+   for: Sheets, Drive (for the saved copy and the sheet's last-edited time) and triggers. It saves
+   the first copy and installs the 15-minute trigger. Running it again is harmless.
+3. **Deploy → Manage deployments**, select the existing Web app, click **Edit** (pencil),
+   choose **Version: New version**, and click **Deploy**. Keep *Execute as: Me* and *Who has
+   access: Anyone*. Don't use **New deployment**: that gets a new URL, and `SCRIPT_URL` in
+   `docs/works/js/config.js` only knows the current one.
+
+**To check it:** open the Web App URL in a browser. You should get JSON straight away, with a
+`snapshotAt` time. The saved copy is **Workflow Updater - sheet snapshot.json** in My Drive. Leave
+it there and don't share it: if it's deleted, the next refresh recreates it.
+
+Free Google accounts get 90 minutes of trigger runtime a day. The trigger only does the slow read
+after an edit (or every 6 hours regardless, to catch formula-only changes), so it stays well
+inside that.
+
+The Web App is shared with *Anyone*, and its URL is in the public `config.js`, so anyone who
+finds the URL can read the rows the app shows. That was already true before. What changed is
+that the script no longer accepts writes.
+
+## Retired
+
+These have been removed. They are still in the git history if ever needed.
+
+- **The editable dashboard** (`windows/`, served at `/app/`, plus the Windows EXE build). Editing
+  happens in the Google Sheet now. `docs/app/` keeps a small page that redirects to `/works/`, and
+  a service worker that removes the dashboard from browsers that installed it.
+- **The Android app** (`android/` and its build, signing and Play upload workflows). This doesn't
+  unpublish it from Google Play: phones that already have it keep loading the sheet, because the
+  Apps Script's response hasn't changed. To withdraw it, unpublish it in Play Console. The
+  privacy policy at `docs/index.html` must stay online as long as the listing exists. The Play
+  signing secrets in this repo's GitHub settings are no longer used.
+
+The release tooling in `scripts/` (`deploy-play-workflows.sh`, `play-workflows/`,
+`sync-github-secrets.sh`, `create-keystores-termux.sh`, `generate-android-release-notes.py`)
+serves the other Android repos and was left in place.

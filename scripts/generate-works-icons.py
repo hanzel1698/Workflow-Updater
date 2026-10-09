@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Rasterizes the RDO KKD Works icon into the PNG launcher icons its web manifest needs.
 
-This is the read-only works viewer published at /works/. The editable dashboard at /app/ has its
-own mark, drawn by generate-web-icons.py.
+This is the read-only works viewer published at /works/.
 
 Run after changing the icon design:
 

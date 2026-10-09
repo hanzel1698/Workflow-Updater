@@ -1,7 +1,7 @@
 /**
- * Talks to the same Google Apps Script Web App the Android and Windows clients use
- * (see windows/google_apps_script.js), then filters rows down to the active engineer profile.
- * Ported from android/.../data/SheetsRemoteDataSource.kt and WorkflowRepository.kt.
+ * Reads the sheet through the Google Apps Script Web App (apps-script/Code.js), then filters rows
+ * down to the active engineer profile. The Web App answers from a snapshot it keeps at most ~15
+ * minutes old; a forced load (the refresh button) asks it to re-read the sheet first if it changed.
  */
 
 import {
@@ -17,27 +17,27 @@ import {
 import { createWorkItem, rowValue } from './model.js';
 import { WorksLocalCache } from './cache.js';
 
-// Apps Script needs 15-80 s to hand back a 1 MB sheet, so a short timeout aborts reads that
-// would have succeeded.
+// A refresh after an edit makes Apps Script re-read the sheet, which takes 15-80 s, so a short
+// timeout aborts reads that would have succeeded.
 const FETCH_TIMEOUT_MS = 90000;
 // Waits before each retry of a transient failure (network drop, Google's HTML error page).
 const RETRY_DELAYS_MS = [1500, 4000, 8000];
 // A copy synced this recently is shown as-is instead of waiting on the sheet again.
 const FRESH_WINDOW_MS = 30 * 1000;
 
-function buildUrl(scriptUrl) {
+function buildUrl(scriptUrl, refresh) {
   const separator = scriptUrl.includes('?') ? '&' : '?';
   return `${scriptUrl}${separator}sheet=${encodeURIComponent(SHEET_NAME)}&spreadsheetId=${encodeURIComponent(
     SPREADSHEET_ID,
-  )}`;
+  )}${refresh ? '&refresh=1' : ''}`;
 }
 
 /** @returns {Promise<{headers: string[], rows: Array<Object>}>} */
-async function fetchSheet(scriptUrl) {
+async function fetchSheet(scriptUrl, { refresh = false } = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(buildUrl(scriptUrl), { signal: controller.signal, redirect: 'follow' });
+    const response = await fetch(buildUrl(scriptUrl, refresh), { signal: controller.signal, redirect: 'follow' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const json = await response.json();
     if (!json || json.success !== true) throw new Error((json && json.error) || 'Unknown server error');
@@ -120,8 +120,9 @@ export function createRepository({
 
     /**
      * Fetches the live sheet, persisting success; falls back to cache then sample on failure.
-     * A copy synced within the last 30 s is reused unless `force` is set (manual refresh), and
-     * overlapping loads share one request, since each one costs Apps Script up to a minute.
+     * A copy synced within the last 30 s is reused unless `force` is set (manual refresh), which
+     * also asks the Web App to re-read the sheet if it changed. Overlapping loads share one
+     * request, except that a forced one never settles for a plain read already in flight.
      */
     async loadWorks(profile, { force = false } = {}) {
       const scriptUrl = (profile.scriptUrl || '').trim() || SCRIPT_URL;
@@ -139,10 +140,12 @@ export function createRepository({
       let response = null;
       let failure = null;
       try {
-        if (!inflight) {
-          inflight = fetchWithRetry(remote, scriptUrl, retryDelays).finally(() => {
-            inflight = null;
+        if (!inflight || (force && !inflight.refresh)) {
+          const request = fetchWithRetry(remote, scriptUrl, { refresh: force }, retryDelays).finally(() => {
+            if (inflight === request) inflight = null;
           });
+          request.refresh = force;
+          inflight = request;
         }
         response = await inflight;
       } catch (error) {
@@ -188,10 +191,10 @@ export function createRepository({
  * page or a dropped connection. Retry those with a growing delay before giving up on the live
  * sheet; a timeout is not retried, as it has already cost the full wait.
  */
-async function fetchWithRetry(remote, scriptUrl, delays) {
+async function fetchWithRetry(remote, scriptUrl, options, delays) {
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await remote(scriptUrl);
+      return await remote(scriptUrl, options);
     } catch (error) {
       const retryable = error && error.name !== 'AbortError' && !/^HTTP 40[13]/.test(error.message || '');
       if (!retryable || attempt >= delays.length || (typeof navigator !== 'undefined' && navigator.onLine === false)) {

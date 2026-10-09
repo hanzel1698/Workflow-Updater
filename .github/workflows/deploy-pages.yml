@@ -2,7 +2,7 @@ name: Deploy GitHub Pages
 
 # Publishes docs/ as the site:
 #   /        privacy policy (the URL registered with Google Play)
-#   /app/    editable dashboard, synced from windows/
+#   /app/    redirect from the retired editable dashboard to /works/
 #   /works/  read-only works viewer
 #
 # Required because Pages > Source is set to "GitHub Actions"; with that setting the
@@ -42,6 +42,7 @@ jobs:
           for required in \
             docs/index.html \
             docs/app/index.html \
+            docs/app/sw.js \
             docs/works/index.html \
             docs/works/js/main.js \
             docs/works/sw.js

@@ -2,9 +2,8 @@
  * Dark / light theme.
  *
  * With no stored choice the app follows the operating system, which is what it has always done;
- * the app bar's button overrides that and writes the choice down. The key is shared with the
- * editable dashboard at /app/ — both are served from the same origin, so picking light in one
- * picks it in the other, and the two apps never disagree about which theme this device is on.
+ * the app bar's button overrides that and writes the choice down. The key's `wu.` prefix dates
+ * from the retired dashboard at /app/, which shared it; it is kept so nobody's choice is lost.
  *
  * The stored value is *applied* by a two-line gate in index.html, early enough that a light-theme
  * user never sees a dark flash. This module owns the key and the button.

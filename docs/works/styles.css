@@ -1,10 +1,9 @@
 /*
  * Violet-accented theme ported from android/.../theme/Color.kt, Theme.kt, Type.kt and Shape.kt.
  *
- * The same design language as the editable dashboard (windows/style.css): one violet accent, five
- * semantic status tones applied through `data-tone`, one radius scale, flat surfaces layered by
- * lightness rather than by shadow — elevation is kept for things that genuinely float above the
- * page (the FAB, sheets, dialogs, toasts). The two web apps are one product and should read as one.
+ * One violet accent, five semantic status tones applied through `data-tone`, one radius scale,
+ * flat surfaces layered by lightness rather than by shadow — elevation is kept for things that
+ * genuinely float above the page (the FAB, sheets, dialogs, toasts).
  */
 
 :root {
@@ -94,8 +93,7 @@
 }
 
 /*
- * `data-theme` is set by the app bar's theme button and stored under the same key the dashboard
- * uses — both apps share an origin, so choosing light in one chooses it in the other. With no
+ * `data-theme` is set by the app bar's theme button and remembered in localStorage. With no
  * stored choice the app follows the operating system.
  */
 :root[data-theme='light'] {
@@ -209,7 +207,6 @@ button { font-family: inherit; }
   background: var(--bg-surface);
 }
 
-/* The dashboard wears the same mark; on a shared origin the two apps should look related. */
 .brand-mark {
   display: inline-flex;
   flex: 0 0 auto;

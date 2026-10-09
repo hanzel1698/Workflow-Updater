@@ -1,8 +1,8 @@
 /**
- * Logic tests for the read-only web app, mirroring the Android unit tests in
- * android/app/src/test/java/com/example/workflowupdater/. No dependencies — run with:
+ * Logic tests for the read-only web app. They began as ports of the retired Android app's unit
+ * tests, which the section headings still name. No dependencies — run with:
  *
- *     node web/tests/run-tests.mjs
+ *     node docs/works/tests/run-tests.mjs
  */
 
 import assert from 'node:assert/strict';
@@ -414,6 +414,42 @@ test('a copy synced moments ago is reused; a forced refresh and concurrent loads
 
   await repository.loadWorks(profile, { force: true });
   assert.equal(calls, 2);
+});
+
+test('only a forced refresh asks the Web App to re-read the sheet', async () => {
+  const asked = [];
+  const remote = async (scriptUrl, options) => {
+    asked.push(options.refresh);
+    return { headers: [], rows: sampleRows() };
+  };
+  const repository = createRepository({ remote, localCache: null, retryDelays: [0], freshWindowMs: 0 });
+  const profile = profileById('AD');
+
+  await repository.loadWorks(profile);
+  await repository.loadWorks(profile, { force: true });
+  assert.deepEqual(asked, [false, true]);
+});
+
+test('a forced refresh does not settle for a plain read already in flight', async () => {
+  const asked = [];
+  const remote = async (scriptUrl, options) => {
+    asked.push(options.refresh);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return { headers: [], rows: options.refresh ? sampleRows() : [] };
+  };
+  const repository = createRepository({ remote, localCache: null, retryDelays: [0] });
+  const profile = profileById('AD');
+
+  const [plain, forced] = await Promise.all([
+    repository.loadWorks(profile),
+    repository.loadWorks(profile, { force: true }),
+  ]);
+  assert.deepEqual(asked, [false, true]);
+  assert.equal(plain.works.length, 0);
+  assert.equal(forced.works.length, 2, 'the refresh gets the re-read sheet');
+
+  await repository.loadWorks(profile);
+  assert.equal(asked.length, 2, 'the refreshed copy is then reused');
 });
 
 test('browser network errors are translated into something actionable', async () => {

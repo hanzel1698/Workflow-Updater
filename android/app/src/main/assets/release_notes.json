@@ -1,9 +1,0 @@
-{
-  "versionCode": 8,
-  "versionName": "3.0.0",
-  "title": "What's New",
-  "features": [
-    "Open the app offline using the latest sheet data saved on your phone",
-    "Long-press design status chips to reorder them for faster filtering"
-  ]
-}

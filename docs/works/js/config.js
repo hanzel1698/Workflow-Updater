@@ -1,7 +1,6 @@
 /**
- * Central configuration for the live Google Sheet integration, ported from
- * android/.../data/SheetConfig.kt so the web app, the Android app and the desktop
- * dashboard stay pointed at the same spreadsheet, roster and column layout.
+ * Central configuration for the live Google Sheet integration: the Apps Script Web App
+ * (apps-script/Code.js), the spreadsheet, the engineer roster and the column layout.
  */
 
 /** Apps Script Web App URL used when a profile doesn't define its own. */
@@ -15,8 +14,8 @@ export const DEFAULT_PROFILE_ID = 'AD';
 export const ALL_PROFILE_ID = 'ALL';
 
 /**
- * Web build identity. Mirrors the Android app's versionCode/versionName so the
- * one-time "What's New" screen uses the identical show-once rule.
+ * Web build identity. The one-time "What's New" screen shows release_notes.json only when its
+ * versionCode matches APP_VERSION_CODE, and only once per versionCode.
  */
 export const APP_VERSION_CODE = 8;
 export const APP_VERSION_NAME = '3.0.0';

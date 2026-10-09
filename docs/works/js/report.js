@@ -1,7 +1,6 @@
 /**
- * Renders the same grouped, print-ready A3 report as the Android app's "Export PDF" action and
- * the Windows dashboard's "Download PDF Report", so a work handled by an engineer looks identical
- * whether it was exported from the desktop, the phone or the browser.
+ * Renders the grouped, print-ready A3 report, laid out exactly as the retired Android app and
+ * desktop dashboard drew it, so reports exported before and after look the same.
  * Ported from android/.../pdf/PdfReportBuilder.kt.
  */
 
