@@ -62,8 +62,9 @@ to be shared any further.
    access: Anyone*. Don't use **New deployment**: that gets a new URL, and `SCRIPT_URL` in
    `docs/works/js/config.js` only knows the current one.
 
-**To check it:** open the Web App URL in a browser. You should get JSON straight away, with a
-`snapshotAt` time. The saved copy is **Workflow Updater - sheet snapshot.json** in My Drive. Leave
+**To check it:** open the Web App URL in a browser. You should get JSON straight away, with
+`snapshotAt` (when the sheet was last read) and `checkedAt` (when the copy was last confirmed to
+match the sheet; the app shows this as "Sheet as of"). The saved copy is **Workflow Updater - sheet snapshot.json** in My Drive. Leave
 it there and don't share it: if it's deleted, the next refresh recreates it.
 
 Free Google accounts get 90 minutes of trigger runtime a day. The trigger only does the slow read

@@ -7,7 +7,7 @@
 // Namespaced because everything on this origin shares one cache storage, including what is left
 // of the retired dashboard at /app/. Each app must only ever reap its own generations.
 const CACHE_PREFIX = 'rdo-kkd-works-';
-const CACHE_NAME = `${CACHE_PREFIX}v10`;
+const CACHE_NAME = `${CACHE_PREFIX}v11`;
 
 const APP_SHELL = [
   './',

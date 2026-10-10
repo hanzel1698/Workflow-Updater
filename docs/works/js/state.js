@@ -121,7 +121,7 @@ export function createUiState(overrides = {}) {
     isSample: false,
     errorMessage: null,
     lastSyncedAtMillis: null,
-    /** When the Web App read the sheet behind the rows on screen; null for sample data. */
+    /** When the rows on screen were last confirmed to match the sheet; null for sample data. */
     sheetAsOfMillis: null,
     isExporting: false,
     ...overrides,

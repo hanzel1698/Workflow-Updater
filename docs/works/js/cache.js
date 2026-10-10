@@ -9,7 +9,7 @@ const CACHE_KEY = 'workflow_updater.sheet_snapshot';
 export const WorksLocalCache = {
   /**
    * @param {Array<Object>} rows @param {number} syncedAtMillis
-   * @param {number|null} sheetAsOfMillis when the Web App read the sheet, if it said
+   * @param {number|null} sheetAsOfMillis when the rows were last confirmed to match the sheet, if known
    */
   save(rows, syncedAtMillis, sheetAsOfMillis = null) {
     try {

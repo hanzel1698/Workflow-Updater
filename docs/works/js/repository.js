@@ -44,7 +44,9 @@ async function fetchSheet(scriptUrl, { refresh = false } = {}) {
     return {
       headers: Array.isArray(json.headers) ? json.headers : [],
       rows: Array.isArray(json.rows) ? json.rows.map(toStringMap) : [],
-      sheetAsOfMillis: Date.parse(json.snapshotAt) || null,
+      // checkedAt: the copy was last confirmed to match the sheet (a check that found no edit
+      // since the read); snapshotAt: the read itself, all an older Web App reports.
+      sheetAsOfMillis: Date.parse(json.checkedAt) || Date.parse(json.snapshotAt) || null,
     };
   } finally {
     clearTimeout(timeout);
@@ -88,7 +90,7 @@ export function createRepository({
   let lastGoodRows = null;
   let inflight = null;
   let lastSyncedAtMillis = null;
-  // When the Web App read the sheet for the rows we hold; null if it did not say.
+  // When the rows we hold were last confirmed to match the sheet; null if the Web App did not say.
   let lastSheetAsOfMillis = null;
   let diskWarmed = false;
 

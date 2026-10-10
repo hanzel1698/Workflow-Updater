@@ -491,6 +491,28 @@ test('when the sheet was read travels with the rows, into the saved copy and bac
   assert.equal((await sampleOnly.loadWorks(profileById('AD'))).sheetAsOfMillis, null, 'sample rows have no sheet time');
 });
 
+test('the sheet time is when the copy was last confirmed, else when it was read', async () => {
+  const realFetch = globalThis.fetch;
+  const urls = [];
+  let body = null;
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return { ok: true, status: 200, json: async () => body };
+  };
+  try {
+    const repository = createRepository({ localCache: null, retryDelays: [0], freshWindowMs: 0 });
+    const rows = sampleRows();
+    body = { success: true, headers: [], rows, snapshotAt: '2026-10-10T00:09:46.821Z', checkedAt: '2026-10-10T00:22:23.000Z' };
+    assert.equal((await repository.loadWorks(profileById('AD'), { force: true })).sheetAsOfMillis, Date.parse(body.checkedAt));
+    body = { success: true, headers: [], rows, snapshotAt: '2026-10-10T00:09:46.821Z' };
+    assert.equal((await repository.loadWorks(profileById('AD'))).sheetAsOfMillis, Date.parse(body.snapshotAt));
+    assert.match(urls[0], /&refresh=1$/);
+    assert.doesNotMatch(urls[1], /refresh/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test('the view model shows when the sheet behind the list was read', async () => {
   const read = Date.parse('2026-10-10T00:09:46.821Z');
   const repository = createRepository({

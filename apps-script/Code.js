@@ -9,7 +9,8 @@
  * for ?refresh=1, which re-reads the sheet straight away if it was edited since the snapshot.
  *
  * The response is the same { success, headers, rows } the apps have always read, plus snapshotAt
- * (when the sheet was read). Nothing here writes to the sheet.
+ * (when the sheet was read) and checkedAt (when the copy was last confirmed to match the sheet:
+ * its read, or a later check that found no edit). Nothing here writes to the sheet.
  *
  * SETUP (standalone project at script.google.com, signed in as ad.rdokkd@gmail.com):
  * 1. Paste this entire file into Code.gs, replacing what is there.
@@ -37,6 +38,7 @@ var LOCK_WAIT_MS = 80 * 1000;
 var PROP_FILE_ID = "SNAPSHOT_FILE_ID";
 var PROP_SOURCE_UPDATED = "SNAPSHOT_SOURCE_UPDATED_MS";
 var PROP_SNAPSHOT_AT = "SNAPSHOT_AT_MS";
+var PROP_CHECKED_AT = "SNAPSHOT_CHECKED_AT_MS";
 
 var HEADER_MARKERS = ["e-Office File Number", "Name of Work"];
 
@@ -69,7 +71,7 @@ function doGet(e) {
       var file = snapshotFile_();
       json = file ? file.getBlob().getDataAsString() : saveSnapshot_();
     }
-    return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(withCheckedAt_(json)).setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
     return jsonResponse_({ success: false, error: error.toString() });
   }
@@ -94,7 +96,10 @@ function refreshIfChanged_() {
     var sourceUpdated = sheetLastUpdated_();
     var unchanged = sourceUpdated === Number(props.getProperty(PROP_SOURCE_UPDATED));
     var recent = Date.now() - Number(props.getProperty(PROP_SNAPSHOT_AT)) < MAX_SNAPSHOT_AGE_MS;
-    if (unchanged && recent && snapshotFile_()) return null;
+    if (unchanged && recent && snapshotFile_()) {
+      props.setProperty(PROP_CHECKED_AT, String(Date.now()));
+      return null;
+    }
     return saveSnapshot_(sourceUpdated);
   } finally {
     lock.releaseLock();
@@ -121,8 +126,16 @@ function saveSnapshot_(sourceUpdated) {
   saved[PROP_FILE_ID] = file.getId();
   saved[PROP_SOURCE_UPDATED] = String(sourceUpdated);
   saved[PROP_SNAPSHOT_AT] = String(Date.parse(payload.snapshotAt));
+  saved[PROP_CHECKED_AT] = saved[PROP_SNAPSHOT_AT];
   PropertiesService.getScriptProperties().setProperties(saved);
   return json;
+}
+
+/** Adds checkedAt to the saved JSON, which always ends with the "}" of its top-level object. */
+function withCheckedAt_(json) {
+  var checkedAt = Number(PropertiesService.getScriptProperties().getProperty(PROP_CHECKED_AT));
+  if (!checkedAt) return json;
+  return json.slice(0, -1) + ',"checkedAt":"' + new Date(checkedAt).toISOString() + '"}';
 }
 
 function sheetLastUpdated_() {

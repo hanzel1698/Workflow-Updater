@@ -24,7 +24,7 @@ export function createMainScreen({ viewModel, onWorkClick, onOpenBulk }) {
   let state = viewModel.getState();
 
   const subtitle = el('p', { className: 'app-bar-subtitle' });
-  // When the Web App last read the sheet, so it is plain whether a fresh edit is in the list.
+  // When the list was last confirmed to match the sheet, so it is plain whether a fresh edit is in it.
   const sheetAsOf = el('p', { className: 'app-bar-subtitle sheet-as-of', hidden: true });
   const filterBadge = el('span', { className: 'filter-badge', hidden: true });
 
