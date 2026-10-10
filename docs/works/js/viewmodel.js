@@ -46,6 +46,7 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
         // blocked host, a CORS rejection or a timeout, and none of that is visible otherwise.
         errorMessage: result.errorMessage,
         lastSyncedAtMillis: result.lastSyncedAtMillis ?? s.lastSyncedAtMillis,
+        sheetAsOfMillis: result.isSample ? null : result.sheetAsOfMillis ?? s.sheetAsOfMillis,
       }),
     );
   }
@@ -61,6 +62,7 @@ export function createWorksViewModel({ repository, prefs = ProfilePrefs }) {
           // Not a failure: the saved copy is on screen while the live one loads behind it.
           isOffline: false,
           lastSyncedAtMillis: cached.lastSyncedAtMillis ?? s.lastSyncedAtMillis,
+          sheetAsOfMillis: cached.sheetAsOfMillis ?? s.sheetAsOfMillis,
         }),
       );
     }

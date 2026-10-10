@@ -12,7 +12,7 @@ import { createRequire } from 'node:module';
 const XLSX = createRequire(import.meta.url)('../vendor/xlsx.mini.min.js');
 
 import { ALL_PROFILE, MOCK_ROWS, STATUS_OPTIONS, profileById } from '../js/config.js';
-import { SheetDateFormatter, StatusMapper, createWorkItem } from '../js/model.js';
+import { SheetDateFormatter, StatusMapper, createWorkItem, formatSheetAsOf } from '../js/model.js';
 import {
   computeDropdownOptions,
   createFilters,
@@ -76,6 +76,14 @@ test('sheet dates render as DD/MM/YYYY in Asia/Kolkata', () => {
     SheetDateFormatter.format('After getting intimation from field officials'),
     'After getting intimation from field officials',
   );
+});
+
+test('the sheet-as-of time reads in Asia/Kolkata, with the date only when it is not today', () => {
+  const read = Date.parse('2026-10-10T00:09:46.821Z'); // 5:39 AM on 10 Oct in India
+  assert.match(formatSheetAsOf(read, Date.parse('2026-10-10T06:00:00Z')), /^5:39\sAM$/);
+  assert.match(formatSheetAsOf(read, Date.parse('2026-10-11T03:00:00Z')), /^10 Oct, 5:39\sAM$/);
+  // 00:30 on 10 Oct in India is still 9 Oct in UTC: it is today, not yesterday.
+  assert.match(formatSheetAsOf(Date.parse('2026-10-09T19:00:00Z'), read), /^12:30\sAM$/);
 });
 
 /* ---------------- Row normalization ---------------- */
@@ -323,8 +331,8 @@ test('reordering visible chips keeps hidden chips in their slots', () => {
 const memoryCache = () => {
   let snapshot = null;
   return {
-    save(rows, syncedAtMillis) {
-      snapshot = { rows, syncedAtMillis };
+    save(rows, syncedAtMillis, sheetAsOfMillis = null) {
+      snapshot = { rows, syncedAtMillis, sheetAsOfMillis };
     },
     load() {
       return snapshot;
@@ -450,6 +458,49 @@ test('a forced refresh does not settle for a plain read already in flight', asyn
 
   await repository.loadWorks(profile);
   assert.equal(asked.length, 2, 'the refreshed copy is then reused');
+});
+
+test('when the sheet was read travels with the rows, into the saved copy and back', async () => {
+  const cache = memoryCache();
+  const read = Date.parse('2026-10-10T00:09:46.821Z');
+  const repository = createRepository({
+    remote: async () => ({ headers: [], rows: sampleRows(), sheetAsOfMillis: read }),
+    localCache: cache,
+    retryDelays: [0],
+  });
+  assert.equal((await repository.loadWorks(profileById('AD'))).sheetAsOfMillis, read);
+  assert.equal(cache.load().sheetAsOfMillis, read);
+
+  const reopened = createRepository({
+    retryDelays: [0],
+    remote: async () => {
+      throw new Error('offline');
+    },
+    localCache: cache,
+  });
+  assert.equal(reopened.loadCachedWorks(profileById('AD')).sheetAsOfMillis, read);
+  assert.equal((await reopened.loadWorks(profileById('AD'))).sheetAsOfMillis, read, 'offline: still the saved copy');
+
+  const sampleOnly = createRepository({
+    retryDelays: [0],
+    remote: async () => {
+      throw new Error('offline');
+    },
+    localCache: null,
+  });
+  assert.equal((await sampleOnly.loadWorks(profileById('AD'))).sheetAsOfMillis, null, 'sample rows have no sheet time');
+});
+
+test('the view model shows when the sheet behind the list was read', async () => {
+  const read = Date.parse('2026-10-10T00:09:46.821Z');
+  const repository = createRepository({
+    remote: async () => ({ headers: [], rows: sampleRows(), sheetAsOfMillis: read }),
+    localCache: null,
+    retryDelays: [0],
+  });
+  const viewModel = createWorksViewModel({ repository, prefs: stubPrefs() });
+  await viewModel.start();
+  assert.equal(viewModel.getState().sheetAsOfMillis, read);
 });
 
 test('browser network errors are translated into something actionable', async () => {

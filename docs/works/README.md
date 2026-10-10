@@ -63,6 +63,7 @@ the same way.
 | Export grouped **A3 landscape PDF** report, named after the engineer | The report is rendered into the page behind a print stylesheet, then `window.print()` → "Save as PDF". Not an iframe: a 0×0 iframe is never laid out and prints blank |
 | Opens instantly, and offline, from the last synced sheet | Snapshot in `localStorage`, shown first while a fresh copy loads behind it; app shell cached by a service worker |
 | Offline banner with last-synced time | |
+| **Sheet as of** time under the title | When the Web App last read the sheet, in Asia/Kolkata time (the date is added when it isn't today), so you can tell whether a fresh edit is in the list. Says "syncing…" while a refresh is checking the sheet |
 | Pull to refresh, or the refresh button in the top bar | Asks the Web App to re-read the sheet if it was edited since its saved copy (see [Where the data comes from](#where-the-data-comes-from)) |
 | Sample data when there is no network and no cache | |
 | Installable to the home screen | Web app manifest + icons |

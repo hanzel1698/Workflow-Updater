@@ -5,6 +5,7 @@
  */
 
 import { isAllProfile } from '../config.js';
+import { formatSheetAsOf } from '../model.js';
 import { countActiveDropdownFilters, hasAnyFilter } from '../state.js';
 import { clear, el, iconButton } from './dom.js';
 import { Icons } from './icons.js';
@@ -23,6 +24,8 @@ export function createMainScreen({ viewModel, onWorkClick, onOpenBulk }) {
   let state = viewModel.getState();
 
   const subtitle = el('p', { className: 'app-bar-subtitle' });
+  // When the Web App last read the sheet, so it is plain whether a fresh edit is in the list.
+  const sheetAsOf = el('p', { className: 'app-bar-subtitle sheet-as-of', hidden: true });
   const filterBadge = el('span', { className: 'filter-badge', hidden: true });
 
   const profileButton = iconButton(Icons.switchAccount(), {
@@ -63,6 +66,7 @@ export function createMainScreen({ viewModel, onWorkClick, onOpenBulk }) {
     el('div', { className: 'app-bar-titles' }, [
       el('h1', { className: 'app-bar-title', text: 'RDO KKD Works' }),
       subtitle,
+      sheetAsOf,
     ]),
     el('div', { className: 'app-bar-actions' }, [
       createThemeToggle(),
@@ -267,6 +271,12 @@ export function createMainScreen({ viewModel, onWorkClick, onOpenBulk }) {
     subtitle.textContent = isAllProfile(state.activeProfile)
       ? `All engineers • ${state.filteredWorks.length} shown`
       : `Engineer ${state.activeProfile.id} • ${state.filteredWorks.length} shown`;
+
+    sheetAsOf.hidden = !state.sheetAsOfMillis;
+    if (state.sheetAsOfMillis) {
+      const asOf = `Sheet as of ${formatSheetAsOf(state.sheetAsOfMillis)}`;
+      sheetAsOf.textContent = state.isRefreshing ? `${asOf} • syncing…` : asOf;
+    }
 
     if (searchInput.value !== state.searchQuery) searchInput.value = state.searchQuery;
 

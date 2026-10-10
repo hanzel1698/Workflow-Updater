@@ -176,3 +176,14 @@ export const SheetDateFormatter = {
 function pad(day, month, year) {
   return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${String(year).padStart(4, '0')}`;
 }
+
+const AS_OF_TIME = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' });
+const AS_OF_DAY = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
+const AS_OF_DATE_KEY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' });
+
+/** When the sheet was read, in Asia/Kolkata like every sheet date: "5:39 AM" today, else "9 Oct, 5:39 AM". */
+export function formatSheetAsOf(millis, now = Date.now()) {
+  const at = new Date(millis);
+  const time = AS_OF_TIME.format(at);
+  return AS_OF_DATE_KEY.format(at) === AS_OF_DATE_KEY.format(new Date(now)) ? time : `${AS_OF_DAY.format(at)}, ${time}`;
+}

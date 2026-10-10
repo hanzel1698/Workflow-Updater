@@ -7,24 +7,31 @@
 const CACHE_KEY = 'workflow_updater.sheet_snapshot';
 
 export const WorksLocalCache = {
-  /** @param {Array<Object>} rows @param {number} syncedAtMillis */
-  save(rows, syncedAtMillis) {
+  /**
+   * @param {Array<Object>} rows @param {number} syncedAtMillis
+   * @param {number|null} sheetAsOfMillis when the Web App read the sheet, if it said
+   */
+  save(rows, syncedAtMillis, sheetAsOfMillis = null) {
     try {
-      window.localStorage.setItem(CACHE_KEY, JSON.stringify({ syncedAtMillis, rows }));
+      window.localStorage.setItem(CACHE_KEY, JSON.stringify({ syncedAtMillis, sheetAsOfMillis, rows }));
     } catch (error) {
       // Quota exceeded or site data disabled — the app falls back to a network-only session.
       console.warn('Failed to persist offline sheet cache', error);
     }
   },
 
-  /** @returns {{syncedAtMillis: number, rows: Array<Object>}|null} */
+  /** @returns {{syncedAtMillis: number, sheetAsOfMillis: number|null, rows: Array<Object>}|null} */
   load() {
     try {
       const raw = window.localStorage.getItem(CACHE_KEY);
       if (!raw) return null;
       const snapshot = JSON.parse(raw);
       if (!snapshot || !Array.isArray(snapshot.rows)) return null;
-      return { syncedAtMillis: Number(snapshot.syncedAtMillis) || 0, rows: snapshot.rows };
+      return {
+        syncedAtMillis: Number(snapshot.syncedAtMillis) || 0,
+        sheetAsOfMillis: Number(snapshot.sheetAsOfMillis) || null,
+        rows: snapshot.rows,
+      };
     } catch (error) {
       console.warn('Failed to read offline sheet cache', error);
       return null;

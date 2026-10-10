@@ -32,7 +32,7 @@ function buildUrl(scriptUrl, refresh) {
   )}${refresh ? '&refresh=1' : ''}`;
 }
 
-/** @returns {Promise<{headers: string[], rows: Array<Object>}>} */
+/** @returns {Promise<{headers: string[], rows: Array<Object>, sheetAsOfMillis: number|null}>} */
 async function fetchSheet(scriptUrl, { refresh = false } = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -44,6 +44,7 @@ async function fetchSheet(scriptUrl, { refresh = false } = {}) {
     return {
       headers: Array.isArray(json.headers) ? json.headers : [],
       rows: Array.isArray(json.rows) ? json.rows.map(toStringMap) : [],
+      sheetAsOfMillis: Date.parse(json.snapshotAt) || null,
     };
   } finally {
     clearTimeout(timeout);
@@ -87,11 +88,14 @@ export function createRepository({
   let lastGoodRows = null;
   let inflight = null;
   let lastSyncedAtMillis = null;
+  // When the Web App read the sheet for the rows we hold; null if it did not say.
+  let lastSheetAsOfMillis = null;
   let diskWarmed = false;
 
-  function rememberRows(rows, syncedAtMillis) {
+  function rememberRows(rows, syncedAtMillis, sheetAsOfMillis) {
     lastGoodRows = rows;
     lastSyncedAtMillis = syncedAtMillis;
+    lastSheetAsOfMillis = sheetAsOfMillis || null;
   }
 
   function memoryOrDiskRows() {
@@ -100,7 +104,7 @@ export function createRepository({
     diskWarmed = true;
     const snapshot = localCache.load();
     if (!snapshot) return null;
-    rememberRows(snapshot.rows, snapshot.syncedAtMillis);
+    rememberRows(snapshot.rows, snapshot.syncedAtMillis, snapshot.sheetAsOfMillis);
     return snapshot.rows;
   }
 
@@ -115,6 +119,7 @@ export function createRepository({
         isSample: false,
         errorMessage: null,
         lastSyncedAtMillis,
+        sheetAsOfMillis: lastSheetAsOfMillis,
       };
     },
 
@@ -134,6 +139,7 @@ export function createRepository({
           isOffline: false,
           errorMessage: null,
           lastSyncedAtMillis,
+          sheetAsOfMillis: lastSheetAsOfMillis,
         };
       }
 
@@ -154,13 +160,14 @@ export function createRepository({
 
       if (response) {
         const syncedAt = Date.now();
-        rememberRows(response.rows, syncedAt);
-        if (localCache) localCache.save(response.rows, syncedAt);
+        rememberRows(response.rows, syncedAt, response.sheetAsOfMillis);
+        if (localCache) localCache.save(response.rows, syncedAt, lastSheetAsOfMillis);
         return {
           works: filterRowsForProfile(response.rows, profile),
           isOffline: false,
           errorMessage: null,
           lastSyncedAtMillis: syncedAt,
+          sheetAsOfMillis: lastSheetAsOfMillis,
         };
       }
 
@@ -172,6 +179,7 @@ export function createRepository({
           isSample: false,
           errorMessage: describeFailure(failure),
           lastSyncedAtMillis,
+          sheetAsOfMillis: lastSheetAsOfMillis,
         };
       }
 
@@ -181,6 +189,7 @@ export function createRepository({
         isSample: true,
         errorMessage: describeFailure(failure) || 'Could not reach the live sheet',
         lastSyncedAtMillis: null,
+        sheetAsOfMillis: null,
       };
     },
   };
