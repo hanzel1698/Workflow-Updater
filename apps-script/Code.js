@@ -209,7 +209,7 @@ function isPopulatedDataRow_(row, headers) {
 // Non-ASCII characters are written as \u escapes, so the saved file reads back identically
 // whatever character set Drive stores it in.
 function asciiJson_(object) {
-  return JSON.stringify(object).replace(/[\u007f-￿]/g, function(c) {
+  return JSON.stringify(object).replace(/[\u007f-\uffff]/g, function(c) {
     return "\\u" + ("000" + c.charCodeAt(0).toString(16)).slice(-4);
   });
 }
