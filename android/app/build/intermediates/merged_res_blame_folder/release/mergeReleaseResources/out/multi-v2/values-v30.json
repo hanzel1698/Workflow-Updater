@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.example.workflowupdater.app-mergeReleaseResources-37:/values-v30/values-v30.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\hanze\\AppData\\Local\\Temp\\cursor-sandbox-cache\\c640d792363897e81ce496d640c9ea59\\gradle\\caches\\9.1.0\\transforms\\fd9ef49fdf7f76e9c848aa5df7cea244\\workspace\\transformed\\material3\\res\\values-v30\\values-v30.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "72",
+                        "endOffsets": "123"
+                    }
+                }
+            ]
+        }
+    ]
+}
