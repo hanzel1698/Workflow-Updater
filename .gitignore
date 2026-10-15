@@ -4,3 +4,5 @@
 .DS_Store
 Thumbs.db
 *.log
+# Tool caches, rebuilt on each PC (added by GitHub Sync)
+.gradle/
